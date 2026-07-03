@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+    <g id="crab-body" stroke="#121214" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+        
+        <g fill="#211c38">
+            <polygon points="200,300 60,370 20,470 60,480 100,410 200,340" />
+            <polygon points="312,300 452,370 492,470 452,480 412,410 312,340" />
+            <polygon points="200,260 40,290 2,380 40,400 80,330 200,290" />
+            <polygon points="312,260 472,290 510,380 472,400 432,330 312,290" />
+        </g>
+
+        <g fill="#312a5c">
+            <polygon points="180,240 50,210 10,270 40,295 80,255 180,260" />
+            <polygon points="332,240 462,210 502,270 472,295 432,255 332,260" />
+            <polygon points="180,220 90,160 90,80 130,80 130,135 200,195" />
+            <polygon points="332,220 422,160 422,80 382,80 382,135 312,195" />
+        </g>
+
+        <g fill="#493f80">
+            <polygon points="90,80 40,30 110,2 130,80" />
+            <polygon points="130,80 180,35 150,5" fill="#5d529e" />
+        </g>
+        
+        <g fill="#493f80">
+            <polygon points="422,80 472,30 402,2 382,80" />
+            <polygon points="382,80 332,35 362,5" fill="#5d529e" />
+        </g>
+
+        <g fill="#342b61">
+            <rect x="188" y="70" width="16" height="75" transform="rotate(-15 196 105)" />
+            <rect x="308" y="70" width="16" height="75" transform="rotate(15 316 105)" />
+        </g>
+        
+        <circle cx="182" cy="70" r="22" fill="#00e5ff" />
+        <circle cx="330" cy="70" r="22" fill="#00e5ff" />
+        <circle cx="182" cy="70" r="10" fill="#ffffff" />
+        <circle cx="330" cy="70" r="10" fill="#ffffff" />
+
+        <polygon points="256,120 380,165 410,260 365,340 256,370 147,340 102,260 132,165" fill="#433878" />
+        
+        <polygon points="256,120 380,165 256,245" fill="#4c3f88" opacity="0.6"/>
+        <polygon points="256,120 132,165 256,245" fill="#5a4d9c" opacity="0.4"/>
+        <polygon points="132,165 102,260 256,245" fill="#3b316b" opacity="0.5"/>
+        <polygon points="380,165 410,260 256,245" fill="#524494" opacity="0.7"/>
+        <polygon points="102,260 147,340 256,370 256,245" fill="#2d2554" opacity="0.4"/>
+        <polygon points="410,260 365,340 256,370 256,245" fill="#372e63" opacity="0.4"/>
+
+    </g>
+</svg>
