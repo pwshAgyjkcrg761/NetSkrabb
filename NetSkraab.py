@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkraab.py
-# VERSION: 2026.07.03__16.16.40
+# VERSION: 2026.07.04__09.13.27
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,7 +60,7 @@ from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.03__16.16.40"
+APP_VERSION = "2026.07.04__09.13.27"
 
 class SettingsDialog(QDialog):
     def __init__(self, current_settings, parent=None):
@@ -181,7 +181,7 @@ class EpListCleanUI(QMainWindow):
         import json
         import os
 
-        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eplstc.config.json")
+        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NetSkraab.config.json")
         
         # Baseline fallback defaults
         default_settings = {
@@ -306,9 +306,37 @@ class EpListCleanUI(QMainWindow):
         # Connect signals for runtime changes
         self.profile_dropdown.currentTextChanged.connect(self.toggle_digits_visibility)
         self.profile_dropdown.currentTextChanged.connect(self.save_profile_config_directly)
+
+        # Absolute Numbering Row Container (for dynamic visibility toggles)
+        self.abs_container = QWidget()
+        abs_layout = QHBoxLayout(self.abs_container)
+        abs_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Set initial layout visibility state based on selection
-        self.toggle_digits_visibility(self.profile_dropdown.currentText())
+        self.abs_checkbox = QCheckBox("Use Absolute Numbering")
+        self.abs_checkbox.setChecked(self.settings_config.get('use_absolute', False))
+        
+        self.abs_start_label = QLabel("Start Number:")
+        self.abs_start_spinbox = QSpinBox()
+        self.abs_start_spinbox.setRange(1, 9999)
+        self.abs_start_spinbox.setValue(self.settings_config.get('abs_start_num', 1))
+        self.abs_start_spinbox.setFixedWidth(85)
+        self.abs_start_spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.abs_start_spinbox.setGroupSeparatorShown(False)
+        
+        self.abs_checkbox.toggled.connect(self.save_absolute_config_directly)
+        self.abs_start_spinbox.valueChanged.connect(lambda: self.save_absolute_config_directly())
+        
+        self.abs_start_label.setEnabled(self.abs_checkbox.isChecked())
+        self.abs_start_spinbox.setEnabled(self.abs_checkbox.isChecked())
+        self.abs_checkbox.toggled.connect(lambda checked: self.abs_start_label.setEnabled(checked))
+        self.abs_checkbox.toggled.connect(lambda checked: self.abs_start_spinbox.setEnabled(checked))
+        
+        abs_layout.addWidget(self.abs_checkbox)
+        abs_layout.addSpacing(10)
+        abs_layout.addWidget(self.abs_start_label)
+        abs_layout.addWidget(self.abs_start_spinbox)
+        abs_layout.addStretch()
+        main_layout.addWidget(self.abs_container)
 
         # 4. Input Text Box Area
         input_label = QLabel("Raw Text / Source Code:")
@@ -317,6 +345,21 @@ class EpListCleanUI(QMainWindow):
         
         main_layout.addWidget(input_label)
         main_layout.addWidget(self.input_text)
+
+        # Image Download Contextual Layout
+        self.image_layout = QHBoxLayout()
+        
+        self.img_download_checkbox = QCheckBox("Download Cover Image", self)
+        self.img_download_checkbox.setChecked(False)
+        self.img_download_checkbox.stateChanged.connect(self.toggle_img_button_state)
+        self.image_layout.addWidget(self.img_download_checkbox)
+        
+        self.img_choose_btn = QPushButton("Choose Cover...", self)
+        self.img_choose_btn.setEnabled(False)
+        self.img_choose_btn.clicked.connect(self.open_image_picker_dialog)
+        self.image_layout.addWidget(self.img_choose_btn)
+        
+        main_layout.addLayout(self.image_layout)
 
         # 4. Action Button
         self.clean_btn = QPushButton("CLEAN && FORMAT")
@@ -360,6 +403,9 @@ class EpListCleanUI(QMainWindow):
         self.fetch_btn.clicked.connect(self.placeholder_fetch)
         self.clean_btn.clicked.connect(self.placeholder_clean)
         self.copy_btn.clicked.connect(self.placeholder_copy)
+
+        # Set initial layout visibility state safely now that all elements are initialized
+        self.toggle_digits_visibility(self.profile_dropdown.currentText())
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -411,9 +457,130 @@ class EpListCleanUI(QMainWindow):
         about_action.triggered.connect(self.open_about_dialog)
         help_menu.addAction(about_action)
 
-    # Temporary placeholders to make sure buttons react when clicked
     def placeholder_fetch(self):
-        self.statusBar().showMessage("Fetch URL clicked (Functionality coming next)...")
+        import urllib.request
+        import re
+        
+        url = self.url_input.text().strip()
+        if not url:
+            self.statusBar().showMessage("Please provide a URL to fetch.")
+            return
+
+        selected_profile = self.profile_dropdown.currentText()
+
+        # Automatically redirect main series entries to their respective episode sub-pages
+        if selected_profile == "MyAnimeList.net" and url:
+            # Check if it's a main title URL but doesn't already end with /episode or /episode/
+            if "/anime/" in url and not re.search(r'/episode(?:/\d+)?/?$', url):
+                # Clean up any trailing query parameters or trailing slashes first
+                base_url = url.split('?')[0].rstrip('/')
+                url = f"{base_url}/episode"
+        if selected_profile != "MyAnimeList.net":
+            self.statusBar().showMessage(f"URL scraping is currently only implemented for MyAnimeList.net.")
+            return
+
+        self.statusBar().showMessage("Fetching data from MyAnimeList.net...")
+        
+        try:
+            from html.parser import HTMLParser
+            import html
+
+            class MALEpisodesParser(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.episodes = []
+                    self.pagination_urls = set()
+                    self.current_num = None
+                    self.in_num_cell = False
+                    self.in_title_cell = False
+                    self.in_title_link = False
+                    self.in_pagination = False
+                    self.current_title_chunks = []
+
+                def handle_starttag(self, tag, attrs):
+                    attrs_dict = dict(attrs)
+                    cls = attrs_dict.get('class', '')
+                    
+                    if tag == 'td' and 'episode-number' in cls:
+                        self.in_num_cell = True
+                    elif tag == 'td' and 'episode-title' in cls:
+                        self.in_title_cell = True
+                    elif tag == 'a' and self.in_title_cell:
+                        self.in_title_link = True
+                        self.current_title_chunks = []
+                    elif tag == 'div' and 'pagination' in cls:
+                        self.in_pagination = True
+                    elif tag == 'a' and self.in_pagination:
+                        href = attrs_dict.get('href', '')
+                        if href:
+                            self.pagination_urls.add(href)
+
+                def handle_data(self, data):
+                    if self.in_num_cell:
+                        cleaned_num = data.strip()
+                        if cleaned_num.isdigit():
+                            self.current_num = int(cleaned_num)
+                    elif self.in_title_link:
+                        self.current_title_chunks.append(data)
+
+                def handle_endtag(self, tag):
+                    if tag == 'td' and self.in_num_cell:
+                        self.in_num_cell = False
+                    elif tag == 'a' and self.in_title_link:
+                        self.in_title_link = False
+                        full_title = "".join(self.current_title_chunks).strip()
+                        full_title = html.unescape(full_title).strip()
+                        if self.current_num is not None and full_title and not full_title.startswith('http'):
+                            self.episodes.append((self.current_num, full_title))
+                    elif tag == 'td' and self.in_title_cell:
+                        self.in_title_cell = False
+                    elif tag == 'div' and self.in_pagination:
+                        self.in_pagination = False
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
+            }
+
+            # Phase 1: Fetch the primary page link given in the UI
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                html_text = response.read().decode('utf-8', errors='ignore')
+
+            parser = MALEpisodesParser()
+            parser.feed(html_text)
+            
+            # Phase 2: If additional offset pages exist, process them sequentially
+            visited_urls = {url}
+            extra_urls = sorted(list(parser.pagination_urls))
+            
+            for extra_url in extra_urls:
+                if extra_url not in visited_urls:
+                    visited_urls.add(extra_url)
+                    try:
+                        self.statusBar().showMessage(f"Fetching additional episodes from offset page...")
+                        req_extra = urllib.request.Request(extra_url, headers=headers)
+                        with urllib.request.urlopen(req_extra, timeout=10) as response_extra:
+                            html_extra = response_extra.read().decode('utf-8', errors='ignore')
+                        parser.feed(html_extra)
+                    except Exception:
+                        pass
+
+            # De-duplicate rows by episode number and format output text cleanly
+            unique_episodes = {}
+            for ep_num, full_title in parser.episodes:
+                unique_episodes[ep_num] = full_title
+                
+            episodes_found = [f"{num} {unique_episodes[num]}" for num in sorted(unique_episodes.keys())]
+
+            if episodes_found:
+                self.input_text.setPlainText('\n'.join(episodes_found))
+                self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from MyAnimeList.")
+            else:
+                self.input_text.setPlainText("No episodes could be found using the structural HTML parser.")
+                self.statusBar().showMessage("Fetch complete, but no matching table rows found.")
+                
+        except Exception as e:
+            self.statusBar().showMessage(f"Network error during fetch: {str(e)}")
 
     def placeholder_clean(self):
         import re
@@ -426,49 +593,60 @@ class EpListCleanUI(QMainWindow):
         cleaned_episodes = []
 
         if selected_profile == "MyAnimeList.net":
-            lines = [line.strip() for line in raw_text.splitlines()]
-            for idx, line in enumerate(lines):
-                if '(' in line and idx > 0:
-                    prev_line = lines[idx - 1]
-                    match = re.match(r'^(\d+)\s+(.+)$', prev_line)
-                    if match:
-                        ep_num = int(match.group(1))
-                        raw_title = match.group(2).strip()
-                        title_part = re.sub(r'^(Filler|Recap)', '', raw_title).strip()
-
-                        # Apply the centralized configuration text transformations
-                        title_part = self.apply_user_filters(title_part)
-
-                        # Dynamically pull padding constraints directly from the GUI selector
-                        digit_width = self.digits_spinbox.value()
-                        formatted_line = f"{ep_num:0{digit_width}d} {title_part}"
-                        cleaned_episodes.append(formatted_line)
-                        
-        elif selected_profile == "epguides.com":
+            current_abs_num = self.abs_start_spinbox.value() if self.abs_checkbox.isChecked() else None
+            
             for line in raw_text.splitlines():
                 line_str = line.strip()
-                
-                # Capture Season (Group 1), Episode (Group 2), and the remaining Title text line (Group 3)
-                match = re.match(r'^\d+\.\s+(\d+)-(\d+)\s+\d{2}\s+[A-Za-z]{3}\s+\d{2}\s+(.+)$', line_str)
-                
+                match = re.match(r'^(\d+)\s+(.+)$', line_str)
                 if match:
-                    season_num = int(match.group(1))
-                    ep_num = int(match.group(2))
-                    title_part = match.group(3).strip()
-                    
-                    # Strip out specific site labels like "Filler" or "Recap"
-                    title_part = re.sub(r'^(Filler|Recap)', '', title_part).strip()
+                    raw_title = match.group(2).strip()
+                    title_part = re.sub(r'^(Filler|Recap)', '', raw_title).strip()
 
                     # Apply the centralized configuration text transformations
                     title_part = self.apply_user_filters(title_part)
 
-                    # Build the standard 4-digit matrix tag: 2 digits for Season, 2 digits for Episode
-                    formatted_line = f"{season_num:02d}{ep_num:02d} {title_part}"
+                    # Determine target number sequence assignment rule
+                    if current_abs_num is not None:
+                        target_num = current_abs_num
+                        current_abs_num += 1
+                    else:
+                        target_num = int(match.group(1))
+
+                    # Dynamically pull padding constraints directly from the GUI selector
+                    digit_width = self.digits_spinbox.value()
+                    formatted_line = f"{target_num:0{digit_width}d} {title_part}"
                     cleaned_episodes.append(formatted_line)
+                        
+        else:
+            # Shared processing pipeline for Western profiles (4-digit matrix format)
+            def format_western_episode(season, episode, raw_title):
+                clean_title = re.sub(r'^(Filler|Recap)', '', raw_title).strip()
+                clean_title = self.apply_user_filters(clean_title)
+                return f"{season:02d}{episode:02d} {clean_title}"
+
+            if selected_profile == "epguides.com":
+                for line in raw_text.splitlines():
+                    line_str = line.strip()
+                    match = re.match(r'^\d+\.\s+(\d+)-(\d+)\s+\d{2}\s+[A-Za-z]{3}\s+\d{2}\s+(.+)$', line_str)
+                    if match:
+                        cleaned_episodes.append(
+                            format_western_episode(int(match.group(1)), int(match.group(2)), match.group(3))
+                        )
             
-        elif selected_profile == "Wikipedia.org":
-            self.statusBar().showMessage("Wikipedia parser profile not implemented yet.")
-            return
+            elif selected_profile == "Wikipedia.org":
+                current_season = 1
+                for line in raw_text.splitlines():
+                    line_str = line.strip()
+                    season_match = re.search(r'\bSeason\s+(\d+)\b', line_str, flags=re.IGNORECASE)
+                    if season_match:
+                        current_season = int(season_match.group(1))
+                        continue
+                    
+                    match = re.search(r'^\d+\s+(\d+)\s+"([^"]+)"', line_str)
+                    if match:
+                        cleaned_episodes.append(
+                            format_western_episode(current_season, int(match.group(1)), match.group(2))
+                        )
 
         if cleaned_episodes:
             self.output_text.setPlainText('\n'.join(cleaned_episodes))
@@ -526,7 +704,7 @@ class EpListCleanUI(QMainWindow):
         )
         
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("About eplistc")
+        msg_box.setWindowTitle("About NetSkraab")
         msg_box.setTextFormat(Qt.TextFormat.RichText)
         msg_box.setText(about_text)
         msg_box.exec()
@@ -635,6 +813,19 @@ class EpListCleanUI(QMainWindow):
         is_anime = self.profile_types.get(current_text, "Western") == "Anime"
         self.digits_label.setVisible(is_anime)
         self.digits_spinbox.setVisible(is_anime)
+        
+        # Keep image widgets visible only for Anime profiles
+        self.img_download_checkbox.setVisible(is_anime)
+        self.img_choose_btn.setVisible(is_anime)
+        
+        # Synchronize the Absolute Numbering container visibility state
+        self.abs_container.setVisible(is_anime)
+
+    def toggle_img_button_state(self, state):
+        self.img_choose_btn.setEnabled(self.img_download_checkbox.isChecked())
+
+    def open_image_picker_dialog(self):
+        self.statusBar().showMessage("Image picker selection dialog window requested.")
 
     def apply_user_filters(self, title_text):
         import re
@@ -672,6 +863,16 @@ class EpListCleanUI(QMainWindow):
     def save_profile_config_directly(self, value):
         import json
         self.settings_config['profile'] = value
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.settings_config, f, indent=4)
+        except Exception:
+            pass
+
+    def save_absolute_config_directly(self):
+        import json
+        self.settings_config['use_absolute'] = self.abs_checkbox.isChecked()
+        self.settings_config['abs_start_num'] = self.abs_start_spinbox.value()
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.settings_config, f, indent=4)
