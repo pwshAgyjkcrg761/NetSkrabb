@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkraab.py
-# VERSION: 2026.07.04__09.13.27
+# VERSION: 2026.07.04__13.30.28
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,7 +60,7 @@ from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.04__09.13.27"
+APP_VERSION = "2026.07.04__13.30.28"
 
 class SettingsDialog(QDialog):
     def __init__(self, current_settings, parent=None):
@@ -99,7 +99,7 @@ class SettingsDialog(QDialog):
             lbl.setStyleSheet("color: #888888; margin-left: 20px; font-size: 11px;")
             return lbl
 
-        lbl_part_ex = make_example_label("Example: \"part 01\" or \"Part 2\" becomes \"01\" or \"2\"")
+        lbl_part_ex = make_example_label("Example: \"part 2\" or \"title (2)\" becomes \"2\" or \"title 2\"")
         lbl_slash_ex = make_example_label("Example: Allows \"/\" to display visually as \"∕\" without breaking folder trees")
         lbl_fw_ex = make_example_label("Example: Converts standard \"?\" and \";\" to safe \"？\" and \"；\" for shells like PowerShell")
         lbl_illegal_ex = make_example_label("Example: Strips raw \\ / : * ? \" < > | characters, and removes the standard legal ;")
@@ -475,9 +475,74 @@ class EpListCleanUI(QMainWindow):
                 # Clean up any trailing query parameters or trailing slashes first
                 base_url = url.split('?')[0].rstrip('/')
                 url = f"{base_url}/episode"
-        if selected_profile != "MyAnimeList.net":
-            self.statusBar().showMessage(f"URL scraping is currently only implemented for MyAnimeList.net.")
-            return
+        if selected_profile == "epguides.com":
+            self.statusBar().showMessage("Fetching data from epguides.com...")
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    html_text = response.read().decode('utf-8', errors='ignore')
+                
+                # Extract the maze export ID parameter embedded in the source html page
+                maze_match = re.search(r'exportToCSVmaze\.asp\?maze=(\d+)', html_text, re.IGNORECASE)
+                if not maze_match:
+                    self.statusBar().showMessage("Could not locate CSV export ID on the epguides page.")
+                    return
+                
+                maze_id = maze_match.group(1)
+                csv_url = f"https://epguides.com/common/exportToCSVmaze.asp?maze={maze_id}"
+                
+                req_csv = urllib.request.Request(csv_url, headers=headers)
+                with urllib.request.urlopen(req_csv, timeout=10) as csv_resp:
+                    csv_text = csv_resp.read().decode('utf-8', errors='ignore')
+                
+                # Parse columns safely line-by-line while keeping raw spacing intact
+                csv_lines = csv_text.splitlines()
+                episodes_found = []
+                for line in csv_lines:
+                    if not line.strip() or line.startswith('number,'):
+                        continue
+                    
+                    # Split the line from the left side up to the airdate column index
+                    parts = line.split(',', 4)
+                    if len(parts) >= 5 and parts[0].strip().isdigit():
+                        try:
+                            s_num = int(parts[1].strip())
+                            e_num = int(parts[2].strip())
+                            
+                            # The remainder string contains: "Title","URL"
+                            remainder = parts[4].strip()
+                            
+                            # Safely extract the title by isolating the text inside the quotes, or splitting from the right URL
+                            if remainder.startswith('"'):
+                                # Find where the title field quote actually closes before the comma divider
+                                if '",' in remainder:
+                                    ep_title = remainder.split('",', 1)[0][1:].strip()
+                                else:
+                                    end_quote_idx = remainder.rfind('"')
+                                    ep_title = remainder[1:end_quote_idx].strip()
+                            else:
+                                # Fallback if titles aren't quoted: split off the last comma separating the URL
+                                ep_title = remainder.rsplit(',', 1)[0].strip()
+                                
+                            if ep_title:
+                                import html
+                                # Ensure all HTML character entities are fully decoded and explicitly fix ampersands
+                                ep_title = html.unescape(ep_title).replace('&amp;', '&').strip()
+                                # Re-construct string syntax matching what placeholder_clean looks for
+                                episodes_found.append(f"1. {s_num}-{e_num} 00 AAA 00 {ep_title}")
+                        except ValueError:
+                            continue
+                
+                if episodes_found:
+                    self.input_text.setPlainText('\n'.join(episodes_found))
+                    self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from epguides CSV.")
+                else:
+                    self.input_text.setPlainText("No valid episode rows could be parsed from the CSV stream.")
+                return
+            except Exception as e:
+                self.statusBar().showMessage(f"Error fetching from epguides: {str(e)}")
+                return
 
         self.statusBar().showMessage("Fetching data from MyAnimeList.net...")
         
@@ -837,9 +902,18 @@ class EpListCleanUI(QMainWindow):
         cfg_strip = is_all or self.settings_config.get('remove_illegal', True)
         cfg_lower = is_all or self.settings_config.get('lowercase', True)
 
-        # 1. Clean out "Part" string labels when followed by an integer index
+        # 1. Clean out "Part" string labels when followed by an integer index, remove trailing commas before numbers, and remove parentheses around standalone numbers
         if cfg_part:
+            # Handle ", Part 1" -> " 1" or ", part 2" -> " 2"
+            title_text = re.sub(r',\s*part\s+(\d+)\b', r' \1', title_text, flags=re.IGNORECASE)
+            # Handle standard remaining "part 1" labels
             title_text = re.sub(r'\bpart\s+(\d+)\b', r'\1', title_text, flags=re.IGNORECASE)
+            # Handle ", 1" -> " 1" trailing numbers preceding a comma
+            title_text = re.sub(r',\s*(\d+)\b', r' \1', title_text)
+            # Remove parentheses around standalone numbers
+            title_text = re.sub(r'\s*\((\d+)\)', r' \1', title_text)
+            # Clean up any accidental double spaces introduced by the substitutions
+            title_text = re.sub(r'\s+', ' ', title_text).strip()
 
         # 2. Swap standard slashes for the safe division variant
         if cfg_slash:
