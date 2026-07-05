@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkraab.py
-# VERSION: 2026.07.04__13.30.28
+# VERSION: 2026.07.04__14.51.36
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,7 +60,7 @@ from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.04__13.30.28"
+APP_VERSION = "2026.07.04__14.51.36"
 
 class SettingsDialog(QDialog):
     def __init__(self, current_settings, parent=None):
@@ -88,6 +88,8 @@ class SettingsDialog(QDialog):
 
         # 2. Pipeline Ordered Checkboxes
         self.chk_remove_part = QCheckBox("Remove \"Part\" Text Prefix")
+        self.chk_remove_time = QCheckBox("Remove Running Time Duration")
+        self.chk_convert_roman = QCheckBox("Convert Roman Numerals to Arabic")
         self.chk_convert_slash = QCheckBox("Convert Forward Slash to Division Slash (∕)")
         self.chk_fullwidth_chars = QCheckBox("Use Legal Full-width Variants (？ and ；)")
         self.chk_remove_illegal = QCheckBox("Remove Remaining Windows Illegal Characters")
@@ -100,6 +102,8 @@ class SettingsDialog(QDialog):
             return lbl
 
         lbl_part_ex = make_example_label("Example: \"part 2\" or \"title (2)\" becomes \"2\" or \"title 2\"")
+        lbl_time_ex = make_example_label("Example: \"Title (120 min)\" becomes \"Title\"")
+        lbl_roman_ex = make_example_label("Example: \"Part IV\" or \"Chapter IX\" becomes \"Part 4\" or \"Chapter 9\"")
         lbl_slash_ex = make_example_label("Example: Allows \"/\" to display visually as \"∕\" without breaking folder trees")
         lbl_fw_ex = make_example_label("Example: Converts standard \"?\" and \";\" to safe \"？\" and \"；\" for shells like PowerShell")
         lbl_illegal_ex = make_example_label("Example: Strips raw \\ / : * ? \" < > | characters, and removes the standard legal ;")
@@ -108,6 +112,8 @@ class SettingsDialog(QDialog):
         # Grouping sub-checkboxes for easy macro loop operations
         self.sub_checkboxes = [
             self.chk_remove_part,
+            self.chk_remove_time,
+            self.chk_convert_roman,
             self.chk_convert_slash,
             self.chk_fullwidth_chars,
             self.chk_remove_illegal,
@@ -115,11 +121,19 @@ class SettingsDialog(QDialog):
         ]
 
         # Grouping labels to match up with the disable/enable interlocking toggles
-        self.example_labels = [lbl_part_ex, lbl_slash_ex, lbl_fw_ex, lbl_illegal_ex, lbl_lower_ex]
+        self.example_labels = [lbl_part_ex, lbl_time_ex, lbl_roman_ex, lbl_slash_ex, lbl_fw_ex, lbl_illegal_ex, lbl_lower_ex]
 
         # Alternating layouts step-by-step down the display widget stack
         layout.addWidget(self.chk_remove_part)
         layout.addWidget(lbl_part_ex)
+        layout.addSpacing(4)
+        
+        layout.addWidget(self.chk_remove_time)
+        layout.addWidget(lbl_time_ex)
+        layout.addSpacing(4)
+        
+        layout.addWidget(self.chk_convert_roman)
+        layout.addWidget(lbl_roman_ex)
         layout.addSpacing(4)
         
         layout.addWidget(self.chk_convert_slash)
@@ -147,6 +161,8 @@ class SettingsDialog(QDialog):
         # Load states from configuration dict
         self.chk_enable_all.setChecked(settings.get('enable_all', True))
         self.chk_remove_part.setChecked(settings.get('remove_part', True))
+        self.chk_remove_time.setChecked(settings.get('remove_time', True))
+        self.chk_convert_roman.setChecked(settings.get('convert_roman', True))
         self.chk_convert_slash.setChecked(settings.get('convert_slash', True))
         self.chk_fullwidth_chars.setChecked(settings.get('fullwidth_chars', True))
         self.chk_remove_illegal.setChecked(settings.get('remove_illegal', True))
@@ -160,7 +176,14 @@ class SettingsDialog(QDialog):
         # When Enable All is manipulated, update visual states, checkboxes, and description labels
         for chk in self.sub_checkboxes:
             chk.setDisabled(checked)
-            chk.setChecked(checked)
+            if checked:
+                chk.setChecked(True)
+            else:
+                # If master is unchecked, turn off all filters except the Windows safe file name filter
+                if chk == self.chk_remove_illegal:
+                    chk.setChecked(True)
+                else:
+                    chk.setChecked(False)
         for lbl in self.example_labels:
             lbl.setDisabled(checked)
 
@@ -168,6 +191,8 @@ class SettingsDialog(QDialog):
         return {
             'enable_all': self.chk_enable_all.isChecked(),
             'remove_part': self.chk_remove_part.isChecked(),
+            'remove_time': self.chk_remove_time.isChecked(),
+            'convert_roman': self.chk_convert_roman.isChecked(),
             'convert_slash': self.chk_convert_slash.isChecked(),
             'fullwidth_chars': self.chk_fullwidth_chars.isChecked(),
             'remove_illegal': self.chk_remove_illegal.isChecked(),
@@ -186,11 +211,13 @@ class EpListCleanUI(QMainWindow):
         # Baseline fallback defaults
         default_settings = {
             'enable_all': True,
-            'remove_part': True,
-            'convert_slash': True,
-            'fullwidth_chars': True,
+            'remove_part': False,
+            'remove_time': False,
+            'convert_roman': False,
+            'convert_slash': False,
+            'fullwidth_chars': False,
             'remove_illegal': True,
-            'lowercase': True,
+            'lowercase': False,
             'min_digits': 2,
             'theme': 'System',
             'profile': 'MyAnimeList.net'
@@ -892,11 +919,27 @@ class EpListCleanUI(QMainWindow):
     def open_image_picker_dialog(self):
         self.statusBar().showMessage("Image picker selection dialog window requested.")
 
+    def _roman_to_arabic(self, match):
+        roman = match.group(0).upper()
+        roman_values = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
+        total = 0
+        prev_value = 0
+        for char in reversed(roman):
+            value = roman_values[char]
+            if value < prev_value:
+                total -= value
+            else:
+                total += value
+            prev_value = value
+        return str(total)
+
     def apply_user_filters(self, title_text):
         import re
         # Fetch active user rules from settings_config (with master toggle override check)
         is_all = self.settings_config.get('enable_all', True)
         cfg_part = is_all or self.settings_config.get('remove_part', True)
+        cfg_time = is_all or self.settings_config.get('remove_time', True)
+        cfg_roman = is_all or self.settings_config.get('convert_roman', True)
         cfg_slash = is_all or self.settings_config.get('convert_slash', True)
         cfg_fw = is_all or self.settings_config.get('fullwidth_chars', True)
         cfg_strip = is_all or self.settings_config.get('remove_illegal', True)
@@ -914,6 +957,14 @@ class EpListCleanUI(QMainWindow):
             title_text = re.sub(r'\s*\((\d+)\)', r' \1', title_text)
             # Clean up any accidental double spaces introduced by the substitutions
             title_text = re.sub(r'\s+', ' ', title_text).strip()
+
+        # New: Remove running time durations in parentheses (e.g., " (120 min)")
+        if cfg_time:
+            title_text = re.sub(r'\s*\(\d+\s*min\)', '', title_text, flags=re.IGNORECASE).strip()
+
+        # New: Convert Roman Numerals to Arabic Numerals (e.g., "Part IV" -> "Part 4")
+        if cfg_roman:
+            title_text = re.sub(r'\b(?=[MDCLXVI]+\b)M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})\b', self._roman_to_arabic, title_text, flags=re.IGNORECASE)
 
         # 2. Swap standard slashes for the safe division variant
         if cfg_slash:
