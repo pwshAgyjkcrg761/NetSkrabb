@@ -1,6 +1,6 @@
 # ==============================================================================
-# SCRIPT: NetSkraab.py
-# VERSION: 2026.07.04__14.51.36
+# SCRIPT: NetSkrabb.py
+# VERSION: 2026.07.07__15.10.38
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,12 +60,12 @@ from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.04__14.51.36"
+APP_VERSION = "2026.07.07__15.10.38"
 
-class SettingsDialog(QDialog):
+class FilterDialog(QDialog):
     def __init__(self, current_settings, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
+        self.setWindowTitle("Filters")
         self.setModal(True)
         self.resize(400, 300)
         
@@ -86,10 +86,10 @@ class SettingsDialog(QDialog):
         line.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(line)
 
-        # 2. Pipeline Ordered Checkboxes
-        self.chk_remove_part = QCheckBox("Remove \"Part\" Text Prefix")
-        self.chk_remove_time = QCheckBox("Remove Running Time Duration")
-        self.chk_convert_roman = QCheckBox("Convert Roman Numerals to Arabic")
+        # 2. Pipeline Ordered Checkboxes (Synchronized with the contextual order of operations flow)
+        self.chk_remove_part = QCheckBox("Enable Part/Volume/Chapter Marker Stripping Pass")
+        self.chk_convert_roman = QCheckBox("Enable Contextual Roman Numeral to Arabic Conversion")
+        self.chk_remove_time = QCheckBox("Enable Running Time Duration Eraser Pass")
         self.chk_convert_slash = QCheckBox("Convert Forward Slash to Division Slash (∕)")
         self.chk_fullwidth_chars = QCheckBox("Use Legal Full-width Variants (？ and ；)")
         self.chk_remove_illegal = QCheckBox("Remove Remaining Windows Illegal Characters")
@@ -101,9 +101,9 @@ class SettingsDialog(QDialog):
             lbl.setStyleSheet("color: #888888; margin-left: 20px; font-size: 11px;")
             return lbl
 
-        lbl_part_ex = make_example_label("Example: \"part 2\" or \"title (2)\" becomes \"2\" or \"title 2\"")
-        lbl_time_ex = make_example_label("Example: \"Title (120 min)\" becomes \"Title\"")
-        lbl_roman_ex = make_example_label("Example: \"Part IV\" or \"Chapter IX\" becomes \"Part 4\" or \"Chapter 9\"")
+        lbl_part_ex = make_example_label("Example: \"Part Two\" or \"(Part 1 & 2)\" becomes \"2\" or \"1 & 2\"")
+        lbl_roman_ex = make_example_label("Example: Converts \"Chapter II\" ➜ \"2\" (Standalone numerals skipped.)")
+        lbl_time_ex = make_example_label("Example: \"Movie Title (120 min)\" becomes \"Movie Title\"")
         lbl_slash_ex = make_example_label("Example: Allows \"/\" to display visually as \"∕\" without breaking folder trees")
         lbl_fw_ex = make_example_label("Example: Converts standard \"?\" and \";\" to safe \"？\" and \"；\" for shells like PowerShell")
         lbl_illegal_ex = make_example_label("Example: Strips raw \\ / : * ? \" < > | characters, and removes the standard legal ;")
@@ -112,8 +112,8 @@ class SettingsDialog(QDialog):
         # Grouping sub-checkboxes for easy macro loop operations
         self.sub_checkboxes = [
             self.chk_remove_part,
-            self.chk_remove_time,
             self.chk_convert_roman,
+            self.chk_remove_time,
             self.chk_convert_slash,
             self.chk_fullwidth_chars,
             self.chk_remove_illegal,
@@ -121,19 +121,19 @@ class SettingsDialog(QDialog):
         ]
 
         # Grouping labels to match up with the disable/enable interlocking toggles
-        self.example_labels = [lbl_part_ex, lbl_time_ex, lbl_roman_ex, lbl_slash_ex, lbl_fw_ex, lbl_illegal_ex, lbl_lower_ex]
+        self.example_labels = [lbl_part_ex, lbl_roman_ex, lbl_time_ex, lbl_slash_ex, lbl_fw_ex, lbl_illegal_ex, lbl_lower_ex]
 
         # Alternating layouts step-by-step down the display widget stack
         layout.addWidget(self.chk_remove_part)
         layout.addWidget(lbl_part_ex)
         layout.addSpacing(4)
         
-        layout.addWidget(self.chk_remove_time)
-        layout.addWidget(lbl_time_ex)
-        layout.addSpacing(4)
-        
         layout.addWidget(self.chk_convert_roman)
         layout.addWidget(lbl_roman_ex)
+        layout.addSpacing(4)
+        
+        layout.addWidget(self.chk_remove_time)
+        layout.addWidget(lbl_time_ex)
         layout.addSpacing(4)
         
         layout.addWidget(self.chk_convert_slash)
@@ -199,6 +199,24 @@ class SettingsDialog(QDialog):
             'lowercase': self.chk_lowercase.isChecked()
         }
 
+class PreferencesDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preferences")
+        self.setModal(True)
+        self.resize(300, 150)
+        
+        layout = QVBoxLayout(self)
+        
+        self.clear_history_btn = QPushButton("Clear URL History")
+        layout.addWidget(self.clear_history_btn)
+        
+        layout.addStretch()
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
 class EpListCleanUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -206,7 +224,7 @@ class EpListCleanUI(QMainWindow):
         import json
         import os
 
-        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NetSkraab.config.json")
+        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NetSkrabb.config.json")
         
         # Baseline fallback defaults
         default_settings = {
@@ -220,30 +238,31 @@ class EpListCleanUI(QMainWindow):
             'lowercase': False,
             'min_digits': 2,
             'theme': 'System',
-            'profile': 'MyAnimeList.net'
+            'profile': 'MyAnimeList.net',
+            'url_history': []
         }
 
         # Try to load existing configuration, otherwise use defaults
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
-                    self.settings_config = json.load(f)
+                    self.app_config = json.load(f)
             except Exception:
-                self.settings_config = default_settings
+                self.app_config = default_settings
         else:
-            self.settings_config = default_settings
+            self.app_config = default_settings
 
         # Manage Window Sizing and Coordinates Geometry
         default_width = 700
         default_height = 600
 
-        if 'window_x' in self.settings_config and 'window_y' in self.settings_config:
+        if 'window_x' in self.app_config and 'window_y' in self.app_config:
             # Restore saved size and desktop space coordinates
             self.setGeometry(
-                self.settings_config['window_x'],
-                self.settings_config['window_y'],
-                self.settings_config.get('window_w', default_width),
-                self.settings_config.get('window_h', default_height)
+                self.app_config['window_x'],
+                self.app_config['window_y'],
+                self.app_config.get('window_w', default_width),
+                self.app_config.get('window_h', default_height)
             )
         else:
             # First launch execution: center horizontally and vertically on primary screen
@@ -259,13 +278,22 @@ class EpListCleanUI(QMainWindow):
                 self.setGeometry(100, 100, default_width, default_height)
 
         # Re-apply maximized desktop scaling bounds if it was closed in that state
-        if self.settings_config.get('window_maximized', False):
+        if self.app_config.get('window_maximized', False):
             self.showMaximized()
         
         # Apply the configured theme engine stylesheet rules on launch
-        self.apply_theme_stylesheet(self.settings_config.get('theme', 'System'))
+        self.apply_theme_stylesheet(self.app_config.get('theme', 'System'))
 
         self.init_ui()
+
+        # Populate history list from configuration storage array safely
+        history_list = self.app_config.get('url_history', [])
+        self.url_input.clear()
+        self.url_input.addItems(history_list)
+        if history_list:
+            self.url_input.setCurrentText(history_list[0])
+        else:
+            self.url_input.setCurrentText("")
 
     def init_ui(self):
         # 1. Menu Bar
@@ -281,14 +309,21 @@ class EpListCleanUI(QMainWindow):
         # 2. URL Input Row
         url_layout = QHBoxLayout()
         url_label = QLabel("URL:")
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Paste webpage URL here...")
+        self.url_input = QComboBox()
+        self.url_input.setEditable(True)
+        self.url_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.url_input.lineEdit().setPlaceholderText("Paste webpage URL here...")
+        from PyQt6.QtWidgets import QSizePolicy
+        self.url_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.fetch_btn = QPushButton("Fetch Text")
         
         url_layout.addWidget(url_label)
         url_layout.addWidget(self.url_input)
         url_layout.addWidget(self.fetch_btn)
         main_layout.addLayout(url_layout)
+
+        # Connect enter key press in URL field to fetch functionality
+        self.url_input.lineEdit().returnPressed.connect(self.placeholder_fetch)
 
         # 3. Profile Selection Row
         profile_layout = QHBoxLayout()
@@ -311,7 +346,7 @@ class EpListCleanUI(QMainWindow):
         self.digits_label = QLabel("Min Digits:")
         self.digits_spinbox = QSpinBox()
         self.digits_spinbox.setRange(1, 9)
-        self.digits_spinbox.setValue(self.settings_config.get('min_digits', 2))
+        self.digits_spinbox.setValue(self.app_config.get('min_digits', 2))
         from PyQt6.QtCore import Qt
         self.digits_spinbox.setFixedWidth(75)  # Expanded width to leave typing space
         self.digits_spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Keep text neatly centered
@@ -325,7 +360,7 @@ class EpListCleanUI(QMainWindow):
         main_layout.addLayout(profile_layout)
 
         # Select the last saved profile configuration on launch
-        saved_profile = self.settings_config.get('profile', 'MyAnimeList.net')
+        saved_profile = self.app_config.get('profile', 'MyAnimeList.net')
         profile_index = self.profile_dropdown.findText(saved_profile)
         if profile_index >= 0:
             self.profile_dropdown.setCurrentIndex(profile_index)
@@ -340,12 +375,12 @@ class EpListCleanUI(QMainWindow):
         abs_layout.setContentsMargins(0, 0, 0, 0)
         
         self.abs_checkbox = QCheckBox("Use Absolute Numbering")
-        self.abs_checkbox.setChecked(self.settings_config.get('use_absolute', False))
+        self.abs_checkbox.setChecked(self.app_config.get('use_absolute', False))
         
         self.abs_start_label = QLabel("Start Number:")
         self.abs_start_spinbox = QSpinBox()
         self.abs_start_spinbox.setRange(1, 9999)
-        self.abs_start_spinbox.setValue(self.settings_config.get('abs_start_num', 1))
+        self.abs_start_spinbox.setValue(self.app_config.get('abs_start_num', 1))
         self.abs_start_spinbox.setFixedWidth(85)
         self.abs_start_spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.abs_start_spinbox.setGroupSeparatorShown(False)
@@ -426,6 +461,8 @@ class EpListCleanUI(QMainWindow):
         self.setStatusBar(QStatusBar(self))
         self.statusBar().showMessage("Ready")
 
+        # Redundant returnPressed connection removed to prevent double-fetching execution loops
+
         # Connect button placeholders to verify layout interaction later
         self.fetch_btn.clicked.connect(self.placeholder_fetch)
         self.clean_btn.clicked.connect(self.placeholder_clean)
@@ -454,10 +491,15 @@ class EpListCleanUI(QMainWindow):
 
         # Tools Menu
         tools_menu = menu_bar.addMenu("&Tools")
-        settings_action = QAction("&Settings", self)
-        settings_action.setStatusTip("Configure global string filter pipelines")
-        settings_action.triggered.connect(self.open_settings_dialog)
-        tools_menu.addAction(settings_action)
+        filters_action = QAction("&Filters", self)
+        filters_action.setStatusTip("Configure global string filter pipelines")
+        filters_action.triggered.connect(self.open_filters_dialog)
+        tools_menu.addAction(filters_action)
+        
+        prefs_action = QAction("&Preferences", self)
+        prefs_action.setStatusTip("Configure application preferences")
+        prefs_action.triggered.connect(self.open_preferences_dialog)
+        tools_menu.addAction(prefs_action)
         
         # Theme Sub-Menu
         theme_menu = tools_menu.addMenu("&Theme")
@@ -466,7 +508,7 @@ class EpListCleanUI(QMainWindow):
         self.theme_group = QActionGroup(self)
         self.theme_group.setExclusive(True)
         
-        current_theme = self.settings_config.get('theme', 'System')
+        current_theme = self.app_config.get('theme', 'System')
         
         for mode in ["Dark", "Light", "System"]:
             action = QAction(mode, self, checkable=True)
@@ -488,12 +530,26 @@ class EpListCleanUI(QMainWindow):
         import urllib.request
         import re
         
-        url = self.url_input.text().strip()
+        url = self.url_input.currentText().strip()
         if not url:
             self.statusBar().showMessage("Please provide a URL to fetch.")
             return
 
         selected_profile = self.profile_dropdown.currentText()
+        
+        # Global UI update to show progress immediately for all profiles
+        self.statusBar().showMessage(f"Fetching data from {selected_profile}...")
+        QApplication.processEvents()
+
+        # Persist URL to history
+        if url not in self.app_config.get('url_history', []):
+            self.app_config['url_history'] = [url] + self.app_config.get('url_history', [])[:9]
+            import json
+            try:
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.app_config, f, indent=4)
+            except Exception:
+                pass
 
         # Automatically redirect main series entries to their respective episode sub-pages
         if selected_profile == "MyAnimeList.net" and url:
@@ -502,6 +558,65 @@ class EpListCleanUI(QMainWindow):
                 # Clean up any trailing query parameters or trailing slashes first
                 base_url = url.split('?')[0].rstrip('/')
                 url = f"{base_url}/episode"
+        
+        elif selected_profile == "Wikipedia.org" and url:
+            # If it's a main series page, resolve it to the standard "List of... episodes" directory first
+            if "wikipedia.org/wiki/" in url.lower() and "list_of_" not in url.lower() and "_episodes" not in url.lower():
+                self.statusBar().showMessage("Main series page detected. Locating episode list link...")
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        html_text = response.read().decode('utf-8', errors='ignore')
+                    
+                    list_match = re.search(r'href="(?://en\.wikipedia\.org)?(/wiki/List_of_[^"]+_episodes[^"]*)"', html_text, re.IGNORECASE)
+                    if list_match:
+                        url = f"https://en.wikipedia.org{list_match.group(1)}"
+                        self.url_input.setText(url)
+                except urllib.error.HTTPError as e:
+                    self.input_text.setPlainText(f"[HTTP ERROR {e.code}]: Failed reaching main page resolve.\nURL: {url}\nReason: {e.reason}")
+                    self.statusBar().showMessage(f"HTTP Error: {e.code}")
+                    return
+                except Exception as e:
+                    import traceback
+                    self.input_text.setPlainText(f"[ERROR]:\n{str(e)}\n\n{traceback.format_exc()}")
+                    pass
+
+            # Detect nested sub-page links from an episode directory list page
+            if "list_of_" in url.lower():
+                try:
+                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        html_text = response.read().decode('utf-8', errors='ignore')
+                    
+                    # Capture sequential season breakdowns like "List_of_The_Simpsons_episodes_(seasons_1–20)"
+                    split_links = re.findall(r'href="(?://en\.wikipedia\.org)?(/wiki/List_of_[^"]+_episodes_\([^)]+\))"', html_text, re.IGNORECASE)
+                    if split_links:
+                        seen = set()
+                        unique_splits = []
+                        import urllib.parse
+                        for link in split_links:
+                            # Strip off any stray domain names accidentally captured by match variants
+                            path_only = link.replace('https://en.wikipedia.org', '').replace('http://en.wikipedia.org', '')
+                            # Ensure the partial path always starts with a leading slash
+                            if not path_only.startswith('/'):
+                                path_only = '/' + path_only
+                            
+                            # Clean and preserve structural entities like colons, parentheses, and slashes
+                            encoded_path = urllib.parse.quote(path_only, safe='/:()–')
+                            full_link = f"https://en.wikipedia.org{encoded_path}"
+                            if full_link not in seen:
+                                seen.add(full_link)
+                                unique_splits.append(full_link)
+                        
+                        self._wikipedia_sub_urls = unique_splits
+                    else:
+                        self._wikipedia_sub_urls = [url]
+                except Exception:
+                    self._wikipedia_sub_urls = [url]
+            else:
+                self._wikipedia_sub_urls = [url]
         if selected_profile == "epguides.com":
             self.statusBar().showMessage("Fetching data from epguides.com...")
             try:
@@ -569,6 +684,126 @@ class EpListCleanUI(QMainWindow):
                 return
             except Exception as e:
                 self.statusBar().showMessage(f"Error fetching from epguides: {str(e)}")
+                return
+
+        if selected_profile == "Wikipedia.org":
+            self.statusBar().showMessage("Fetching data from Wikipedia.org...")
+            try:
+                import urllib.request
+                from bs4 import BeautifulSoup
+                import html
+
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    html_text = response.read().decode('utf-8', errors='ignore')
+
+                soup = BeautifulSoup(html_text, 'html.parser')
+                episodes_found = []
+
+                episodes_found = []
+                target_urls = getattr(self, '_wikipedia_sub_urls', [url])
+                
+                # Clear temporary tracking property after pulling it
+                if hasattr(self, '_wikipedia_sub_urls'):
+                    delattr(self, '_wikipedia_sub_urls')
+
+                import urllib.parse
+                for target_url in target_urls:
+                    # Use the URL directly to prevent destructive double-encoding of special characters
+                    safe_target_url = target_url
+
+                    req = urllib.request.Request(safe_target_url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        html_text = response.read().decode('utf-8', errors='ignore')
+
+                    # Normalize HTML line breaks to a single space to avoid smushing adjacent text strings
+                    html_text = re.sub(r'<br\s*/?>', ' ', html_text, flags=re.IGNORECASE)
+
+                    # Ensure standard padding around structural text blocks like small tags or closed anchors to prevent words running together
+                    html_text = re.sub(r'<\/?(?:small|a|b|i|span)[^>]*>', ' ', html_text, flags=re.IGNORECASE)
+
+                    soup = BeautifulSoup(html_text, 'html.parser')
+
+                    # Find all tables on the page (supports main series page tables and "List of..." tables)
+                    tables = soup.find_all('table', class_=lambda c: c and ('wikitable' in c or 'episode_list' in c))
+                    
+                    if not tables:
+                        tables = soup.find_all('table')
+
+                    for table in tables:
+                        # Look for standard headers to make sure it's a table with titles
+                        headers_text = [th.get_text(strip=True).lower() for th in table.find_all('th')]
+                        if not any('title' in h or 'episode' in h for h in headers_text):
+                            pass
+
+                        # Check if there is a heading preceding this table indicating the season
+                        current_season = 1
+                        prev_element = table.find_previous(['h2', 'h3', 'span'])
+                        while prev_element:
+                            heading_text = prev_element.get_text(strip=True)
+                            season_match = re.search(r'(?:Season|Series)\s+(\d+)', heading_text, re.IGNORECASE)
+                            if season_match:
+                                current_season = int(season_match.group(1))
+                                break
+                            prev_element = prev_element.find_previous(['h2', 'h3', 'span'])
+
+                        rows = table.find_all('tr')
+                        for row in rows:
+                            cells = row.find_all(['td', 'th'])
+                            if not cells:
+                                continue
+
+                            row_data = []
+                            for cell in cells:
+                                txt = cell.get_text(strip=True)
+                                txt = re.sub(r'\[\d+\]', '', txt)
+                                row_data.append(txt)
+
+                            # Purge Wikipedia reference citation links from the title cell completely
+                            if row.find('td', class_='summary'):
+                                title_td = row.find('td', class_='summary')
+                                for sup in title_td.find_all('sup', class_=lambda c: c and ('reference' in c or 'mw-ref' in c)):
+                                    sup.decompose()
+                                for sup in title_td.find_all('sup'):
+                                    sup.decompose()
+                                ep_title = title_td.get_text(strip=True)
+                            else:
+                                ep_title = None
+                                for cell in cells:
+                                    # Copy the cell to perform test stripping without altering the source layout array
+                                    from bs4 import BeautifulSoup
+                                    test_cell = BeautifulSoup(str(cell), 'html.parser')
+                                    for sup in test_cell.find_all('sup'):
+                                        sup.decompose()
+                                    rd = test_cell.get_text(strip=True)
+                                    if (rd.startswith('"') and rd.endswith('"')) or (rd.startswith('“') and rd.endswith('”')):
+                                        ep_title = rd
+                                        break
+
+                            if ep_title:
+                                if (ep_title.startswith('"') and ep_title.endswith('"')) or (ep_title.startswith('“') and ep_title.endswith('”')):
+                                    ep_title = ep_title[1:-1].strip()
+
+                                # Wikipedia tables typically have two numeric columns early on
+                                digits = [rd for rd in row_data if rd.isdigit()]
+                                
+                                ep_num = int(digits[0]) if digits else 1
+                                if len(digits) >= 2:
+                                    ep_num = int(digits[1])
+
+                                if ep_title and not ep_title.isdigit():
+                                    episodes_found.append(f"1. {current_season}-{ep_num} 00 AAA 00 {ep_title}")
+
+                if episodes_found:
+                    self.input_text.setPlainText('\n'.join(episodes_found))
+                    self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} titles from Wikipedia.")
+                else:
+                    self.input_text.setPlainText("No valid episode titles could be identified from the Wikipedia tables.")
+                    self.statusBar().showMessage("Fetch complete, but no matching table columns found.")
+                return
+            except Exception as e:
+                self.statusBar().showMessage(f"Error fetching from Wikipedia: {str(e)}")
                 return
 
         self.statusBar().showMessage("Fetching data from MyAnimeList.net...")
@@ -726,18 +961,12 @@ class EpListCleanUI(QMainWindow):
                         )
             
             elif selected_profile == "Wikipedia.org":
-                current_season = 1
                 for line in raw_text.splitlines():
                     line_str = line.strip()
-                    season_match = re.search(r'\bSeason\s+(\d+)\b', line_str, flags=re.IGNORECASE)
-                    if season_match:
-                        current_season = int(season_match.group(1))
-                        continue
-                    
-                    match = re.search(r'^\d+\s+(\d+)\s+"([^"]+)"', line_str)
+                    match = re.match(r'^\d+\.\s+(\d+)-(\d+)\s+\d{2}\s+[A-Za-z]{3}\s+\d{2}\s+(.+)$', line_str)
                     if match:
                         cleaned_episodes.append(
-                            format_western_episode(current_season, int(match.group(1)), match.group(2))
+                            format_western_episode(int(match.group(1)), int(match.group(2)), match.group(3))
                         )
 
         if cleaned_episodes:
@@ -762,24 +991,59 @@ class EpListCleanUI(QMainWindow):
         self.output_text.clear()
         self.statusBar().showMessage("Fields cleared")
 
-    def open_settings_dialog(self):
-        dialog = SettingsDialog(self.settings_config, self)
+    def load_source_file(self):
+        import os
+        from PyQt6.QtWidgets import QFileDialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Source Text File", "", "Text Files (*.txt);;All Files (*)"
+        )
+        if file_path:
+            self.statusBar().showMessage("Loading and processing source data...")
+            QApplication.processEvents()
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                self.input_text.setPlainText(content)
+                self.statusBar().showMessage(f"Successfully loaded file: {os.path.basename(file_path)}")
+            except Exception as e:
+                self.statusBar().showMessage(f"Failed to load file: {str(e)}")
+
+    # Redundant load_wiki_url_data removed to prevent double-fetching execution loops
+
+    def open_filters_dialog(self):
+        dialog = FilterDialog(self.app_config, self)
         if dialog.exec():
             import json
-            self.settings_config = dialog.get_settings()
+            self.app_config = dialog.get_settings()
             try:
                 with open(self.config_path, 'w', encoding='utf-8') as f:
-                    json.dump(self.settings_config, f, indent=4)
-                self.statusBar().showMessage("Settings successfully saved to config file.")
+                    json.dump(self.app_config, f, indent=4)
+                self.statusBar().showMessage("Filters successfully saved to config file.")
             except Exception as e:
-                self.statusBar().showMessage(f"Settings saved in memory, but failed to write to disk: {str(e)}")
+                self.statusBar().showMessage(f"Filters saved in memory, but failed to write to disk: {str(e)}")
+
+    def open_preferences_dialog(self):
+        dialog = PreferencesDialog(self)
+        dialog.clear_history_btn.clicked.connect(self.clear_url_history)
+        dialog.exec()
+
+    def clear_url_history(self):
+        self.app_config['url_history'] = []
+        self.url_input.clear()
+        import json
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.app_config, f, indent=4)
+            self.statusBar().showMessage("URL history cleared.")
+        except Exception:
+            pass
 
     def open_about_dialog(self):
         from PyQt6.QtWidgets import QMessageBox
         from PyQt6.QtCore import Qt
         
         about_text = (
-            f"<b>NetSkraab v{APP_VERSION}</b><br>"
+            f"<b>NetSkrabb v{APP_VERSION}</b><br>"
             "Copyright (C) 2026 pwshAgyjkcrg761<br>"
             "GPLv3<br><br>"
             "This program is free software: you can redistribute it and/or modify "
@@ -796,7 +1060,7 @@ class EpListCleanUI(QMainWindow):
         )
         
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("About NetSkraab")
+        msg_box.setWindowTitle("About NetSkrabb")
         msg_box.setTextFormat(Qt.TextFormat.RichText)
         msg_box.setText(about_text)
         msg_box.exec()
@@ -808,11 +1072,11 @@ class EpListCleanUI(QMainWindow):
             return
             
         theme_mode = selected_action.text()
-        self.settings_config['theme'] = theme_mode
+        self.app_config['theme'] = theme_mode
         
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.settings_config, f, indent=4)
+                json.dump(self.app_config, f, indent=4)
             self.apply_theme_stylesheet(theme_mode)
             self.statusBar().showMessage(f"Theme changed to {theme_mode}")
         except Exception:
@@ -822,10 +1086,10 @@ class EpListCleanUI(QMainWindow):
 
     def save_digits_config_directly(self, value):
         import json
-        self.settings_config['min_digits'] = value
+        self.app_config['min_digits'] = value
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.settings_config, f, indent=4)
+                json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
 
@@ -936,35 +1200,54 @@ class EpListCleanUI(QMainWindow):
     def apply_user_filters(self, title_text):
         import re
         # Fetch active user rules from settings_config (with master toggle override check)
-        is_all = self.settings_config.get('enable_all', True)
-        cfg_part = is_all or self.settings_config.get('remove_part', True)
-        cfg_time = is_all or self.settings_config.get('remove_time', True)
-        cfg_roman = is_all or self.settings_config.get('convert_roman', True)
-        cfg_slash = is_all or self.settings_config.get('convert_slash', True)
-        cfg_fw = is_all or self.settings_config.get('fullwidth_chars', True)
-        cfg_strip = is_all or self.settings_config.get('remove_illegal', True)
-        cfg_lower = is_all or self.settings_config.get('lowercase', True)
+        is_all = self.app_config.get('enable_all', True)
+        cfg_part = is_all or self.app_config.get('remove_part', True)
+        cfg_time = is_all or self.app_config.get('remove_time', True)
+        cfg_roman = is_all or self.app_config.get('convert_roman', True)
+        cfg_slash = is_all or self.app_config.get('convert_slash', True)
+        cfg_fw = is_all or self.app_config.get('fullwidth_chars', True)
+        cfg_strip = is_all or self.app_config.get('remove_illegal', True)
+        cfg_lower = is_all or self.app_config.get('lowercase', True)
 
-        # 1. Clean out "Part" string labels when followed by an integer index, remove trailing commas before numbers, and remove parentheses around standalone numbers
-        if cfg_part:
-            # Handle ", Part 1" -> " 1" or ", part 2" -> " 2"
-            title_text = re.sub(r',\s*part\s+(\d+)\b', r' \1', title_text, flags=re.IGNORECASE)
-            # Handle standard remaining "part 1" labels
-            title_text = re.sub(r'\bpart\s+(\d+)\b', r'\1', title_text, flags=re.IGNORECASE)
-            # Handle ", 1" -> " 1" trailing numbers preceding a comma
-            title_text = re.sub(r',\s*(\d+)\b', r' \1', title_text)
-            # Remove parentheses around standalone numbers
-            title_text = re.sub(r'\s*\((\d+)\)', r' \1', title_text)
-            # Clean up any accidental double spaces introduced by the substitutions
+        # 1. Combined Contextual Marker Pipeline (Processes numbers only when bound to structural words)
+        if cfg_part or cfg_roman:
+            def parse_marker_content(match):
+                marker = match.group(1)
+                content = match.group(2).strip()
+                
+                # Setup helper translations for written numbers
+                word_to_num = {'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5'}
+                
+                # Check for written phrase patterns first
+                for word, num in word_to_num.items():
+                    content = re.sub(r'\b' + word + r'\b', num, content, flags=re.IGNORECASE)
+                
+                # If Roman numerals toggle is active, find and translate them contextually
+                if cfg_roman:
+                    roman_pattern = r'\b(?=[MDCLXVI]+\b)M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\b'
+                    content = re.sub(roman_pattern, self._roman_to_arabic, content, flags=re.IGNORECASE)
+                
+                # If Part stripping toggle is active, return only the transformed content numbers
+                if cfg_part:
+                    return f" {content}"
+                
+                # Otherwise, keep the original marker prefix word intact
+                return f"{marker} {content}"
+
+            # Step A: Match marker words enclosing joined ampersand segments inside parentheses
+            title_text = re.sub(r'\(\s*(parts?|chapters?|chs?\.?|volumes?|vol\.?)\s+([^)]+)\)', parse_marker_content, title_text, flags=re.IGNORECASE)
+            
+            # Step B: Match sequential markers trailing behind standard text punctuation indicators
+            marker_regex = r'\b(parts?|chapters?|chs?\.?|volumes?|vol\.?)\s+([\w\d\s&–\-]+)\b'
+            title_text = re.sub(marker_regex, parse_marker_content, title_text, flags=re.IGNORECASE)
+
+            # Step C: General trailing number structural cleanups
+            if cfg_part:
+                title_text = re.sub(r',\s*(\d+)\b', r' \1', title_text)
+                title_text = re.sub(r'\s*\((\d+)\)', r' \1', title_text)
+                title_text = re.sub(r',\s*(\d+\s*&\s*\d+)', r' \1', title_text)
+                
             title_text = re.sub(r'\s+', ' ', title_text).strip()
-
-        # New: Remove running time durations in parentheses (e.g., " (120 min)")
-        if cfg_time:
-            title_text = re.sub(r'\s*\(\d+\s*min\)', '', title_text, flags=re.IGNORECASE).strip()
-
-        # New: Convert Roman Numerals to Arabic Numerals (e.g., "Part IV" -> "Part 4")
-        if cfg_roman:
-            title_text = re.sub(r'\b(?=[MDCLXVI]+\b)M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})\b', self._roman_to_arabic, title_text, flags=re.IGNORECASE)
 
         # 2. Swap standard slashes for the safe division variant
         if cfg_slash:
@@ -983,43 +1266,46 @@ class EpListCleanUI(QMainWindow):
         if cfg_lower:
             title_text = title_text.lower()
 
+        # Final Cleanup Crew: Collapse any multi-space clusters down to a single clean space
+        title_text = re.sub(r'\s+', ' ', title_text).strip()
+
         return title_text
 
     def save_profile_config_directly(self, value):
         import json
-        self.settings_config['profile'] = value
+        self.app_config['profile'] = value
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.settings_config, f, indent=4)
+                json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
 
     def save_absolute_config_directly(self):
         import json
-        self.settings_config['use_absolute'] = self.abs_checkbox.isChecked()
-        self.settings_config['abs_start_num'] = self.abs_start_spinbox.value()
+        self.app_config['use_absolute'] = self.abs_checkbox.isChecked()
+        self.app_config['abs_start_num'] = self.abs_start_spinbox.value()
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.settings_config, f, indent=4)
+                json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
             
     def closeEvent(self, event):
         import json
         # Save maximized status trace
-        self.settings_config['window_maximized'] = self.isMaximized()
+        self.app_config['window_maximized'] = self.isMaximized()
         
         # Only preserve normal bounds coordinates if window isn't currently maximized
         if not self.isMaximized():
             geom = self.geometry()
-            self.settings_config['window_x'] = geom.x()
-            self.settings_config['window_y'] = geom.y()
-            self.settings_config['window_w'] = geom.width()
-            self.settings_config['window_h'] = geom.height()
+            self.app_config['window_x'] = geom.x()
+            self.app_config['window_y'] = geom.y()
+            self.app_config['window_w'] = geom.width()
+            self.app_config['window_h'] = geom.height()
 
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.settings_config, f, indent=4)
+                json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
         event.accept()
