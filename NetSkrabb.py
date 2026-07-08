@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.07__15.10.38
+# VERSION: 2026.07.08__09.13.08
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,7 +60,7 @@ from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.07__15.10.38"
+APP_VERSION = "2026.07.08__09.13.08"
 
 class FilterDialog(QDialog):
     def __init__(self, current_settings, parent=None):
@@ -216,6 +216,97 @@ class PreferencesDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        
+
+
+class SearchResultDialog(QDialog):
+    def __init__(self, results, parent=None):
+        """
+        results: List of dictionaries containing:
+                 {'title': '...', 'url': '...', 'extra': '... (e.g. Year/Type)'}
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Search Results")
+        self.setModal(True)
+        self.resize(550, 400)
+        self.selected_url = None
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)
+        
+        label = QLabel("Select a result to load its episode data:")
+        label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(label)
+        
+        # Plain text display area using a layout containing clean rows
+        from PyQt6.QtWidgets import QScrollArea, QFrame
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setSpacing(8)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        
+        if not results:
+            no_res = QLabel("No results found.")
+            no_res.setStyleSheet("color: #888888; font-style: italic;")
+            container_layout.addWidget(no_res)
+        else:
+            for item in results:
+                row_layout = QHBoxLayout()
+                row_layout.setSpacing(10)
+                # Left, Top, Right, Bottom margins for the interactive rows. 
+                # Setting right margin to 10 matching the spacing between buttons.
+                row_layout.setContentsMargins(0, 0, 10, 0)
+                
+                # Format text: Title + Extra Info (Year/Type/etc.)
+                info_text = item['title']
+                if item.get('extra'):
+                    info_text += f" ({item['extra']})"
+                
+                txt_label = QLabel(info_text)
+                txt_label.setWordWrap(True)
+                row_layout.addWidget(txt_label, 1)
+                
+                # Web Browser Link
+                browser_btn = QPushButton("🌐 Open")
+                browser_btn.setFixedWidth(65)
+                browser_btn.setToolTip("View page in external browser")
+                from PyQt6.QtGui import QDesktopServices
+                from PyQt6.QtCore import QUrl
+                browser_btn.clicked.connect(lambda checked, url=item['url']: QDesktopServices.openUrl(QUrl(url)))
+                row_layout.addWidget(browser_btn)
+                
+                # Select Button
+                select_btn = QPushButton("Select")
+                select_btn.setFixedWidth(75)
+                select_btn.setStyleSheet("font-weight: bold;")
+                select_btn.clicked.connect(lambda checked, url=item['url']: self.accept_selection(url))
+                row_layout.addWidget(select_btn)
+                
+                container_layout.addLayout(row_layout)
+                
+                # Minimal clean text divider line
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                line.setStyleSheet("color: #444444;")
+                container_layout.addWidget(line)
+                
+        container_layout.addStretch()
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
+        
+        # Close cancel dialog row
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept_selection(self, url):
+        self.selected_url = url
+        self.accept()
 
 class EpListCleanUI(QMainWindow):
     def __init__(self):
@@ -537,6 +628,82 @@ class EpListCleanUI(QMainWindow):
 
         selected_profile = self.profile_dropdown.currentText()
         
+        # Check if the input is a search query rather than a direct URL
+        is_search_query = not (url.startswith("http://") or url.startswith("https://"))
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
+        }
+
+        if is_search_query:
+            if selected_profile == "MyAnimeList.net":
+                self.statusBar().showMessage(f"Searching MyAnimeList for: {url}...")
+                QApplication.processEvents()
+                try:
+                    import urllib.parse
+                    query_encoded = urllib.parse.quote(url)
+                    # Swapping to your provided high-level search route
+                    search_url = f"https://myanimelist.net/search/all?q={query_encoded}"
+                    
+                    req_search = urllib.request.Request(search_url, headers=headers)
+                    with urllib.request.urlopen(req_search, timeout=10) as resp:
+                        search_html = resp.read().decode('utf-8', errors='ignore')
+                    
+                    # Isolate the Anime search results container block
+                    anime_section = search_html
+                    if '<h2 id="anime">' in search_html:
+                        anime_section = search_html.split('<h2 id="anime">')[1]
+                        if '<h2 id=' in anime_section:
+                            anime_section = anime_section.split('<h2 id=')[0]
+
+                    # Multi-line insensitive scan to catch all valid anime reference links
+                    search_pattern = r'href="(https://myanimelist\.net/anime/(\d+)/[^"]*)"[^>]*>([\s\S]*?)</a>'
+                    matches = re.findall(search_pattern, anime_section)
+                    
+                    results = []
+                    seen_urls = set()
+                    for full_url, anime_id, raw_title in matches:
+                        # Omit video previews or empty tracking strings
+                        if "/video" in full_url:
+                            continue
+                            
+                        import html
+                        clean_title = re.sub(r'<[^>]+>', '', raw_title)
+                        clean_title = html.unescape(clean_title).strip()
+                        
+                        # Filter out decorative text elements or empty links to keep results clean
+                        if not clean_title or clean_title.lower() in ["add", "cmpl", "add to list", "modify", "edit"]:
+                            continue
+                            
+                        if full_url not in seen_urls:
+                            seen_urls.add(full_url)
+                            
+                            # Grab contextual info from the neighboring string chunk
+                            chunk = anime_section.split(full_url)[-1][:800]
+                            info_match = re.search(r'href="https://myanimelist\.net/topanime\.php\?type=[^>]*>([^<]+)</a>\s*(?:\(([^)]+)\))?', chunk)
+                            if info_match:
+                                show_type = info_match.group(1).strip()
+                                ep_count = f" ({info_match.group(2).strip()})" if info_match.group(2) else ""
+                                extra_info = f"{show_type}{ep_count}"
+                            else:
+                                extra_info = "Anime"
+                                
+                            results.append({'title': clean_title, 'url': full_url, 'extra': extra_info})
+                    
+                    # Launch the text-only selection modal window
+                    dialog = SearchResultDialog(results[:15], self)
+                    if dialog.exec() and dialog.selected_url:
+                        url = dialog.selected_url
+                        self.url_input.setCurrentText(url)
+                    else:
+                        self.statusBar().showMessage("Search canceled.")
+                        return
+                except Exception as e:
+                    self.statusBar().showMessage(f"Search failed: {str(e)}")
+                    return
+            else:
+                self.statusBar().showMessage(f"Search queries not yet configured for {selected_profile}.")
+                return
+
         # Global UI update to show progress immediately for all profiles
         self.statusBar().showMessage(f"Fetching data from {selected_profile}...")
         QApplication.processEvents()
