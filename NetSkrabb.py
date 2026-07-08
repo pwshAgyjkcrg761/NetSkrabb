@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.08__09.13.08
+# VERSION: 2026.07.08__12.56.22
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,7 +60,23 @@ from PyQt6.QtGui import QAction, QFont
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.08__09.13.08"
+APP_VERSION = "2026.07.08__12.56.22"
+
+class NetSkrabb(QMainWindow):
+    # Consolidated headers for consistent browser fingerprinting
+    HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Referer': 'https://www.google.com/',
+        'DNT': '1',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-User': '?1'
+    }
 
 class FilterDialog(QDialog):
     def __init__(self, current_settings, parent=None):
@@ -93,6 +109,7 @@ class FilterDialog(QDialog):
         self.chk_convert_slash = QCheckBox("Convert Forward Slash to Division Slash (∕)")
         self.chk_fullwidth_chars = QCheckBox("Use Legal Full-width Variants (？ and ；)")
         self.chk_remove_illegal = QCheckBox("Remove Remaining Windows Illegal Characters")
+        self.chk_remove_illegal.setStyleSheet("QCheckBox { color: #ff4444; } QCheckBox:disabled { color: #888888; }")
         self.chk_lowercase = QCheckBox("Lowercase Mode")
 
         # Helper function to generate clean description labels for examples
@@ -106,7 +123,8 @@ class FilterDialog(QDialog):
         lbl_time_ex = make_example_label("Example: \"Movie Title (120 min)\" becomes \"Movie Title\"")
         lbl_slash_ex = make_example_label("Example: Allows \"/\" to display visually as \"∕\" without breaking folder trees")
         lbl_fw_ex = make_example_label("Example: Converts standard \"?\" and \";\" to safe \"？\" and \"；\" for shells like PowerShell")
-        lbl_illegal_ex = make_example_label("Example: Strips raw \\ / : * ? \" < > | characters, and removes the standard legal ;")
+        lbl_illegal_ex = make_example_label("Example: Strips raw \\ / : * ? \" < > | characters, and removes the standard legal ;\n* Note: This filter is critical for generating valid Windows file system names.")
+        lbl_illegal_ex.setStyleSheet("color: #ff4444; margin-left: 20px; font-size: 11px;")
         lbl_lower_ex = make_example_label("Example: Forces all final text output characters into lowercase format")
 
         # Grouping sub-checkboxes for easy macro loop operations
@@ -178,12 +196,6 @@ class FilterDialog(QDialog):
             chk.setDisabled(checked)
             if checked:
                 chk.setChecked(True)
-            else:
-                # If master is unchecked, turn off all filters except the Windows safe file name filter
-                if chk == self.chk_remove_illegal:
-                    chk.setChecked(True)
-                else:
-                    chk.setChecked(False)
         for lbl in self.example_labels:
             lbl.setDisabled(checked)
 
@@ -257,10 +269,9 @@ class SearchResultDialog(QDialog):
         else:
             for item in results:
                 row_layout = QHBoxLayout()
-                row_layout.setSpacing(10)
-                # Left, Top, Right, Bottom margins for the interactive rows. 
-                # Setting right margin to 10 matching the spacing between buttons.
-                row_layout.setContentsMargins(0, 0, 10, 0)
+                # Increase row padding and vertical breathing room
+                row_layout.setContentsMargins(0, 8, 0, 8)
+                row_layout.setSpacing(12)
                 
                 # Format text: Title + Extra Info (Year/Type/etc.)
                 info_text = item['title']
@@ -269,6 +280,7 @@ class SearchResultDialog(QDialog):
                 
                 txt_label = QLabel(info_text)
                 txt_label.setWordWrap(True)
+                txt_label.setStyleSheet("font-size: 13px; font-weight: 500;")
                 row_layout.addWidget(txt_label, 1)
                 
                 # Web Browser Link
@@ -623,16 +635,18 @@ class EpListCleanUI(QMainWindow):
         
         url = self.url_input.currentText().strip()
         if not url:
-            self.statusBar().showMessage("Please provide a URL to fetch.")
+            self.statusBar().showMessage("Please provide a URL or search query.")
             return
+
+        self.add_to_history(url)
 
         selected_profile = self.profile_dropdown.currentText()
         
         # Check if the input is a search query rather than a direct URL
         is_search_query = not (url.startswith("http://") or url.startswith("https://"))
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
-        }
+        
+        # Reference the consolidated class-level headers
+        headers = NetSkrabb.HEADERS
 
         if is_search_query:
             if selected_profile == "MyAnimeList.net":
@@ -641,28 +655,24 @@ class EpListCleanUI(QMainWindow):
                 try:
                     import urllib.parse
                     query_encoded = urllib.parse.quote(url)
-                    # Swapping to your provided high-level search route
                     search_url = f"https://myanimelist.net/search/all?q={query_encoded}"
                     
                     req_search = urllib.request.Request(search_url, headers=headers)
                     with urllib.request.urlopen(req_search, timeout=10) as resp:
                         search_html = resp.read().decode('utf-8', errors='ignore')
                     
-                    # Isolate the Anime search results container block
                     anime_section = search_html
                     if '<h2 id="anime">' in search_html:
                         anime_section = search_html.split('<h2 id="anime">')[1]
                         if '<h2 id=' in anime_section:
                             anime_section = anime_section.split('<h2 id=')[0]
 
-                    # Multi-line insensitive scan to catch all valid anime reference links
                     search_pattern = r'href="(https://myanimelist\.net/anime/(\d+)/[^"]*)"[^>]*>([\s\S]*?)</a>'
                     matches = re.findall(search_pattern, anime_section)
                     
                     results = []
                     seen_urls = set()
                     for full_url, anime_id, raw_title in matches:
-                        # Omit video previews or empty tracking strings
                         if "/video" in full_url:
                             continue
                             
@@ -670,14 +680,12 @@ class EpListCleanUI(QMainWindow):
                         clean_title = re.sub(r'<[^>]+>', '', raw_title)
                         clean_title = html.unescape(clean_title).strip()
                         
-                        # Filter out decorative text elements or empty links to keep results clean
                         if not clean_title or clean_title.lower() in ["add", "cmpl", "add to list", "modify", "edit"]:
                             continue
                             
                         if full_url not in seen_urls:
                             seen_urls.add(full_url)
                             
-                            # Grab contextual info from the neighboring string chunk
                             chunk = anime_section.split(full_url)[-1][:800]
                             info_match = re.search(r'href="https://myanimelist\.net/topanime\.php\?type=[^>]*>([^<]+)</a>\s*(?:\(([^)]+)\))?', chunk)
                             if info_match:
@@ -689,34 +697,171 @@ class EpListCleanUI(QMainWindow):
                                 
                             results.append({'title': clean_title, 'url': full_url, 'extra': extra_info})
                     
-                    # Launch the text-only selection modal window
                     dialog = SearchResultDialog(results[:15], self)
                     if dialog.exec() and dialog.selected_url:
                         url = dialog.selected_url
-                        self.url_input.setCurrentText(url)
+                        self.add_to_history(url)
                     else:
                         self.statusBar().showMessage("Search canceled.")
                         return
                 except Exception as e:
                     self.statusBar().showMessage(f"Search failed: {str(e)}")
                     return
-            else:
-                self.statusBar().showMessage(f"Search queries not yet configured for {selected_profile}.")
-                return
+            elif selected_profile == "epguides.com":
+                self.statusBar().showMessage(f"Checking epguides direct link for: {url}...")
+                QApplication.processEvents()
+                import urllib.parse
+                import urllib.error
+                
+                # Check if it's already a full URL
+                if url.startswith("http://") or url.startswith("https://"):
+                    direct_guess_url = url
+                else:
+                    clean_name = re.sub(r'[^a-zA-Z0-9]', '', url)
+                    direct_guess_url = f"https://epguides.com/{clean_name}/"
+                
+                try:
+                    req_test = urllib.request.Request(direct_guess_url, headers=headers)
+                    with urllib.request.urlopen(req_test, timeout=7) as resp_test:
+                        url = direct_guess_url
+                        self.url_input.setCurrentText(url)
+                except urllib.error.HTTPError as e:
+                    if e.code == 404 and not (url.startswith("http://") or url.startswith("https://")):
+                        self.statusBar().showMessage("Direct path hit 404. Performing resilient search...")
+                        QApplication.processEvents()
+                        try:
+                            # Search via the standard layout querying with raw encoded search query string
+                            query_encoded = urllib.parse.quote(f"{url} site:epguides.com")
+                            ddg_url = f"https://html.duckduckgo.com/html/?q={query_encoded}"
+                            
+                            req_ddg = urllib.request.Request(ddg_url, headers=headers)
+                            with urllib.request.urlopen(req_ddg, timeout=10) as resp_ddg:
+                                ddg_html = resp_ddg.read().decode('utf-8', errors='ignore')
+                            
+                            # Parse any raw hyperlinks referencing epguides.com inside the search body
+                            links = re.findall(r'href="([^"]+)"', ddg_html)
+                            
+                            results = []
+                            seen_urls = set()
+                            
+                            # Scan for anchor blocks containing the link to pull the actual visual title text
+                            result_blocks = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', ddg_html, re.IGNORECASE)
+                            
+                            for link, raw_anchor_text in result_blocks:
+                                full_url = link
+                                if "duckduckgo.com/l/?" in full_url:
+                                    parsed_proxy = urllib.parse.urlparse(full_url)
+                                    query_params = urllib.parse.parse_qs(parsed_proxy.query)
+                                    if 'uddg' in query_params:
+                                        full_url = query_params['uddg'][0]
+                                
+                                if "epguides.com" in full_url:
+                                    path_parts = [p for p in urllib.parse.urlparse(full_url).path.split('/') if p]
+                                    # Ensure the path is a show folder (e.g., contains more than just a root slash or common path)
+                                    if len(path_parts) >= 1:
+                                        slug = path_parts[0]
+                                        # Blacklist structural pages and dynamic grid paths
+                                        blacklist = ["menu", "common", "features", "index", "help", "about", "search", "html", "allshows", "grid", "current"]
+                                        
+                                        # Check if slug is a blocked keyword or if URL contains blacklisted paths
+                                        if slug.lower() not in blacklist and "/grid/" not in full_url:
+                                            clean_url = f"https://epguides.com/{slug}/"
+                                            if clean_url not in seen_urls:
+                                                seen_urls.add(clean_url)
+                                                
+                                                # Extract clear visual text
+                                                import html
+                                                clean_title = re.sub(r'<[^>]+>', '', raw_anchor_text)
+                                                clean_title = html.unescape(clean_title).split('|')[0].replace("epguides.com", "").strip(" -–—")
+                                                
+                                                # If extraction failed or slug is better, use slug logic
+                                                if not clean_title or len(clean_title) < 3:
+                                                    clean_title = re.sub(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])', ' ', slug).replace('_', ' ').title()
+                                                
+                                                results.append({'title': clean_title, 'url': clean_url, 'extra': 'epguides'})
+                            
+                            if results:
+                                dialog = SearchResultDialog(results[:15], self)
+                                if dialog.exec() and dialog.selected_url:
+                                    url = dialog.selected_url
+                                    self.add_to_history(url)
+                                else:
+                                    self.statusBar().showMessage("Search canceled.")
+                                    return
+                            else:
+                                self.statusBar().showMessage("No matching epguides links found.")
+                                return
+                        except Exception as search_err:
+                            self.statusBar().showMessage(f"Search match routing failed: {str(search_err)}")
+                            return
+                    else:
+                        self.statusBar().showMessage(f"Direct connection failed with HTTP code {e.code}")
+                        return
+                except Exception as e:
+                    self.statusBar().showMessage(f"Direct check lookup failed: {str(e)}")
+                    return
+            elif selected_profile == "Wikipedia.org":
+                self.statusBar().showMessage(f"Searching Wikipedia for: {url}...")
+                QApplication.processEvents()
+                import urllib.parse
+                try:
+                    # Append keywords to force search results toward episode lists and TV series
+                    query_encoded = urllib.parse.quote(f"{url} site:en.wikipedia.org \"List of\" episodes television series")
+                    search_url = f"https://html.duckduckgo.com/html/?q={query_encoded}"
+                    
+                    req_search = urllib.request.Request(search_url, headers=headers)
+                    with urllib.request.urlopen(req_search, timeout=10) as resp:
+                        search_html = resp.read().decode('utf-8', errors='ignore')
+                    
+                    # Extract link blocks and anchor text
+                    result_blocks = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>', search_html, re.IGNORECASE)
+                    
+                    results = []
+                    seen_urls = set()
+                    for link, raw_anchor in result_blocks:
+                        full_url = link
+                        if "duckduckgo.com/l/?" in full_url:
+                            parsed_proxy = urllib.parse.urlparse(full_url)
+                            query_params = urllib.parse.parse_qs(parsed_proxy.query)
+                            if 'uddg' in query_params:
+                                full_url = query_params['uddg'][0]
+                        
+                        # Only process English Wikipedia article links
+                        if "en.wikipedia.org/wiki/" in full_url:
+                            # Only accept URLs that follow the strict "List_of_..._episodes" pattern
+                            if "List_of_" in full_url and "_episodes" in full_url.lower():
+                                # Quick check to exclude Talk or Category pages that might match the string
+                                if "/wiki/Talk:" in full_url or "/wiki/Category:" in full_url:
+                                    continue
+
+                                import html
+                                clean_title = re.sub(r'<[^>]+>', '', raw_anchor)
+                                clean_title = html.unescape(clean_title).split(" - Wikipedia")[0].strip()
+                                
+                                if full_url not in seen_urls:
+                                    seen_urls.add(full_url)
+                                    results.append({'title': clean_title, 'url': full_url, 'extra': 'Episode List'})
+                    
+                    if results:
+                        dialog = SearchResultDialog(results[:15], self)
+                        if dialog.exec() and dialog.selected_url:
+                            url = dialog.selected_url
+                            self.add_to_history(url)
+                        else:
+                            self.statusBar().showMessage("Search canceled.")
+                            return
+                    else:
+                        self.statusBar().showMessage("No matching Wikipedia articles found.")
+                        return
+                except Exception as e:
+                    self.statusBar().showMessage(f"Wikipedia search failed: {str(e)}")
+                    return
 
         # Global UI update to show progress immediately for all profiles
         self.statusBar().showMessage(f"Fetching data from {selected_profile}...")
         QApplication.processEvents()
 
-        # Persist URL to history
-        if url not in self.app_config.get('url_history', []):
-            self.app_config['url_history'] = [url] + self.app_config.get('url_history', [])[:9]
-            import json
-            try:
-                with open(self.config_path, 'w', encoding='utf-8') as f:
-                    json.dump(self.app_config, f, indent=4)
-            except Exception:
-                pass
+        
 
         # Automatically redirect main series entries to their respective episode sub-pages
         if selected_profile == "MyAnimeList.net" and url:
@@ -731,7 +876,8 @@ class EpListCleanUI(QMainWindow):
             if "wikipedia.org/wiki/" in url.lower() and "list_of_" not in url.lower() and "_episodes" not in url.lower():
                 self.statusBar().showMessage("Main series page detected. Locating episode list link...")
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    # Reference class-level headers
+                    headers = NetSkrabb.HEADERS
                     req = urllib.request.Request(url, headers=headers)
                     with urllib.request.urlopen(req, timeout=5) as response:
                         html_text = response.read().decode('utf-8', errors='ignore')
@@ -752,7 +898,8 @@ class EpListCleanUI(QMainWindow):
             # Detect nested sub-page links from an episode directory list page
             if "list_of_" in url.lower():
                 try:
-                    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                    # Reference class-level headers
+                    headers = NetSkrabb.HEADERS
                     req = urllib.request.Request(url, headers=headers)
                     with urllib.request.urlopen(req, timeout=5) as response:
                         html_text = response.read().decode('utf-8', errors='ignore')
@@ -770,8 +917,9 @@ class EpListCleanUI(QMainWindow):
                             if not path_only.startswith('/'):
                                 path_only = '/' + path_only
                             
-                            # Clean and preserve structural entities like colons, parentheses, and slashes
-                            encoded_path = urllib.parse.quote(path_only, safe='/:()–')
+                            # Unquote first to handle already encoded characters, then quote safely to avoid double-encoding
+                            clean_path = urllib.parse.unquote(path_only)
+                            encoded_path = urllib.parse.quote(clean_path, safe='/:()–')
                             full_link = f"https://en.wikipedia.org{encoded_path}"
                             if full_link not in seen:
                                 seen.add(full_link)
@@ -787,7 +935,8 @@ class EpListCleanUI(QMainWindow):
         if selected_profile == "epguides.com":
             self.statusBar().showMessage("Fetching data from epguides.com...")
             try:
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                # Reference class-level headers
+                headers = NetSkrabb.HEADERS
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=10) as response:
                     html_text = response.read().decode('utf-8', errors='ignore')
@@ -860,7 +1009,8 @@ class EpListCleanUI(QMainWindow):
                 from bs4 import BeautifulSoup
                 import html
 
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                # Reference class-level headers
+                headers = NetSkrabb.HEADERS
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=10) as response:
                     html_text = response.read().decode('utf-8', errors='ignore')
@@ -877,8 +1027,12 @@ class EpListCleanUI(QMainWindow):
 
                 import urllib.parse
                 for target_url in target_urls:
-                    # Use the URL directly to prevent destructive double-encoding of special characters
-                    safe_target_url = target_url
+                    # Parse the URL to isolate the path, unquote it to prevent double-encoding, then re-quote safely
+                    import urllib.parse
+                    parsed = urllib.parse.urlparse(target_url)
+                    clean_path = urllib.parse.unquote(parsed.path)
+                    safe_path = urllib.parse.quote(clean_path, safe='/:()–')
+                    safe_target_url = urllib.parse.urlunparse(parsed._replace(path=safe_path))
 
                     req = urllib.request.Request(safe_target_url, headers=headers)
                     with urllib.request.urlopen(req, timeout=10) as response:
@@ -1031,9 +1185,8 @@ class EpListCleanUI(QMainWindow):
                     elif tag == 'div' and self.in_pagination:
                         self.in_pagination = False
 
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
-            }
+            # Reference class-level headers
+            headers = NetSkrabb.HEADERS
 
             # Phase 1: Fetch the primary page link given in the UI
             req = urllib.request.Request(url, headers=headers)
@@ -1153,10 +1306,11 @@ class EpListCleanUI(QMainWindow):
         self.statusBar().showMessage("Cleaned text successfully copied to clipboard.")
 
     def clear_fields(self):
-        self.url_input.clear()
+        # Clear the visible text in the input area without wiping the history items
+        self.url_input.setCurrentText("")
         self.input_text.clear()
         self.output_text.clear()
-        self.statusBar().showMessage("Fields cleared")
+        self.statusBar().showMessage("Ready")
 
     def load_source_file(self):
         import os
@@ -1446,7 +1600,30 @@ class EpListCleanUI(QMainWindow):
                 json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
+    
+    def add_to_history(self, text):
+        if not text:
+            return
+        
+        history = self.app_config.get('url_history', [])
+        if text in history:
+            history.remove(text)
+        history.insert(0, text)
+        self.app_config['url_history'] = history[:10]
+        
+        self.url_input.blockSignals(True)
+        self.url_input.clear()
+        self.url_input.addItems(self.app_config['url_history'])
+        self.url_input.setCurrentText(text)
+        self.url_input.blockSignals(False)
 
+        import json
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.app_config, f, indent=4)
+        except Exception:
+            pass
+    
     def save_absolute_config_directly(self):
         import json
         self.app_config['use_absolute'] = self.abs_checkbox.isChecked()
@@ -1456,6 +1633,8 @@ class EpListCleanUI(QMainWindow):
                 json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
+            
+            
             
     def closeEvent(self, event):
         import json
