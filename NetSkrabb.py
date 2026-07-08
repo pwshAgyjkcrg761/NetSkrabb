@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.08__12.56.22
+# VERSION: 2026.07.08__16.46.07
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -56,11 +56,11 @@ import sys
 from PyQt6.QtWidgets import (QApplication, QComboBox, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                              QPlainTextEdit, QMenuBar, QStatusBar)
-from PyQt6.QtGui import QAction, QFont
+from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.08__12.56.22"
+APP_VERSION = "2026.07.08__16.46.07"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -68,7 +68,7 @@ class NetSkrabb(QMainWindow):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Referer': 'https://www.google.com/',
+        'Referer': 'https://myanimelist.net/',
         'DNT': '1',
         'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0',
@@ -222,6 +222,11 @@ class PreferencesDialog(QDialog):
         
         self.clear_history_btn = QPushButton("Clear URL History")
         layout.addWidget(self.clear_history_btn)
+
+        self.chk_convert_jpg = QCheckBox("Convert Images to JPG (Enabled by default)")
+        self.chk_convert_jpg.setChecked(parent.app_config.get('convert_to_jpg', True))
+        self.chk_convert_jpg.toggled.connect(lambda checked: parent.update_config_key('convert_to_jpg', checked))
+        layout.addWidget(self.chk_convert_jpg)
         
         layout.addStretch()
         
@@ -320,6 +325,153 @@ class SearchResultDialog(QDialog):
         self.selected_url = url
         self.accept()
 
+class ImagePickerDialog(QDialog):
+    def __init__(self, image_urls, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Cover Image")
+        self.setModal(True)
+        self.resize(800, 600)
+        self.selected_url = None
+        self.image_urls = image_urls
+        self.image_buttons = [] # Initialize here to ensure attribute exists for loader
+        
+        layout = QVBoxLayout(self)
+        from PyQt6.QtWidgets import QScrollArea, QGridLayout
+        from PyQt6.QtCore import Qt, QTimer
+        
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        
+        self.container = QWidget()
+        self.grid = QGridLayout(self.container)
+        self.grid.setSpacing(10)
+        
+        self.scroll.setWidget(self.container)
+        layout.addWidget(self.scroll)
+        
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setText("Select Cover")
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        # Horizontal layout for metadata info and buttons
+        bottom_layout = QHBoxLayout()
+        self.info_label = QLabel("Select an image to see large version details...")
+        self.info_label.setStyleSheet("color: #888888; font-style: italic;")
+        bottom_layout.addWidget(self.info_label, 1)
+        bottom_layout.addWidget(self.button_box)
+        layout.addLayout(bottom_layout)
+
+        # Trigger the image loader only after the dialog window is fully visible
+        QTimer.singleShot(100, self.load_images_sequentially)
+
+    def load_images_sequentially(self):
+        from PyQt6.QtGui import QPixmap, QIcon
+        from PyQt6.QtCore import Qt
+        import urllib.request
+        
+        row, col = 0, 0
+        if "-DevDebug" in sys.argv: print(f"[DevDebug] Picker starting load for {len(self.image_urls)} URLs.")
+        for url in self.image_urls:
+            # Check if this icon is already in the parent's cache
+            if url in self.parent().thumbnail_cache:
+                # Retrieve icon and tooltip metadata from cache
+                cached_icon, cached_tooltip = self.parent().thumbnail_cache[url]
+                btn = QPushButton()
+                btn.setIcon(cached_icon)
+                # Ensure cached icons follow the same 140x200 scaling constraints
+                btn.setIconSize(cached_icon.actualSize(QPixmap(140, 200).size()))
+                btn.setFixedSize(150, 210)
+                btn.setToolTip(cached_tooltip)
+                btn.setProperty("img_url", url)
+                btn.clicked.connect(lambda checked, b=btn: self.handle_selection_ui(b))
+                self.image_buttons.append(btn)
+                self.grid.addWidget(btn, row, col)
+                col += 1
+                if col > 3:
+                    col = 0
+                    row += 1
+                continue
+
+            if "-DevDebug" in sys.argv: print(f"[DevDebug] Trying to load: {url}")
+            try:
+                req = urllib.request.Request(url, headers=NetSkrabb.HEADERS)
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    data = response.read()
+                
+                pixmap = QPixmap()
+                if pixmap.loadFromData(data):
+                    btn = QPushButton()
+                    # Wrap the pixmap in a QIcon to satisfy PyQt6 requirement
+                    icon = QIcon(pixmap)
+                    btn.setIcon(icon)
+                    btn.setIconSize(pixmap.size().scaled(140, 200, Qt.AspectRatioMode.KeepAspectRatio))
+                    btn.setFixedSize(150, 210)
+                    # Calculate human-readable size and set detailed tooltip
+                    size_kb = len(data) / 1024
+                    btn.setToolTip(f"File: {url.split('/')[-1]}\nDimensions: {pixmap.width()}x{pixmap.height()}\nSize: {size_kb:.1f} KB")
+                    btn.setProperty("img_url", url)
+                    btn.clicked.connect(lambda checked, b=btn: self.handle_selection_ui(b))
+                    self.image_buttons.append(btn)
+                    
+                    # Store icon and tooltip metadata in persistent cache
+                    self.parent().thumbnail_cache[url] = (icon, btn.toolTip())
+                    
+                    self.grid.addWidget(btn, row, col)
+                    col += 1
+                    if col > 3:
+                        col = 0
+                        row += 1
+                
+                QApplication.processEvents()
+            except Exception as e:
+                if "-DevDebug" in sys.argv: print(f"[DevDebug] Error loading {url}: {e}")
+                continue
+
+    def handle_selection_ui(self, clicked_btn):
+        from PyQt6.QtWidgets import QDialogButtonBox
+        from PyQt6.QtGui import QPixmap
+        import urllib.request
+        import os
+
+        # Visual highlighting
+        for btn in self.image_buttons:
+            btn.setStyleSheet("border: none; padding: 2px;")
+        clicked_btn.setStyleSheet("border: 3px solid #007acc; border-radius: 5px; padding: 2px;")
+        
+        self.selected_url = clicked_btn.property("img_url")
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+        self.info_label.setText("Checking for high-res version details...")
+        self.info_label.setStyleSheet("color: #007acc; font-style: italic;")
+        QApplication.processEvents()
+
+        # Attempt to fetch metadata for the 'Large' version
+        target_url = self.selected_url
+        name_base, ext_part = os.path.splitext(target_url)
+        if not name_base.endswith('l'):
+            l_url = f"{name_base}l{ext_part}"
+            try:
+                req = urllib.request.Request(l_url, headers=NetSkrabb.HEADERS)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    l_data = resp.read()
+                    l_pix = QPixmap()
+                    if l_pix.loadFromData(l_data):
+                        self.selected_url = l_url # Update internal selection to the confirmed large URL
+                        size_kb = len(l_data) / 1024
+                        self.info_label.setText(f"Large Version: {l_pix.width()}x{l_pix.height()} | {size_kb:.1f} KB")
+                        self.info_label.setStyleSheet("color: #28a745; font-weight: bold;")
+                    else:
+                        self.info_label.setText("Standard Version selected (High-res data invalid).")
+                        self.info_label.setStyleSheet("color: #888888;")
+            except Exception:
+                self.info_label.setText("Standard Version selected (High-res unavailable).")
+                self.info_label.setStyleSheet("color: #888888;")
+        else:
+            self.info_label.setText("Large Version already selected.")
+            self.info_label.setStyleSheet("color: #28a745;")
+
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
+
 class EpListCleanUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -342,7 +494,8 @@ class EpListCleanUI(QMainWindow):
             'min_digits': 2,
             'theme': 'System',
             'profile': 'MyAnimeList.net',
-            'url_history': []
+            'url_history': [],
+            'convert_to_jpg': True
         }
 
         # Try to load existing configuration, otherwise use defaults
@@ -386,6 +539,12 @@ class EpListCleanUI(QMainWindow):
         
         # Apply the configured theme engine stylesheet rules on launch
         self.apply_theme_stylesheet(self.app_config.get('theme', 'System'))
+
+        # Runtime Metadata for Image Handling
+        self.scraped_images = []
+        self.scraped_title = "Series"
+        self.selected_image_url = None
+        self.thumbnail_cache = {} # Key: URL, Value: QIcon
 
         self.init_ui()
 
@@ -637,6 +796,11 @@ class EpListCleanUI(QMainWindow):
         if not url:
             self.statusBar().showMessage("Please provide a URL or search query.")
             return
+
+        # Reset image metadata for new fetch session
+        self.scraped_images = []
+        self.scraped_title = "Series"
+        self.selected_image_url = None
 
         self.add_to_history(url)
 
@@ -1138,6 +1302,8 @@ class EpListCleanUI(QMainWindow):
                     super().__init__()
                     self.episodes = []
                     self.pagination_urls = set()
+                    self.series_title = "Series"
+                    self.image_urls = []
                     self.current_num = None
                     self.in_num_cell = False
                     self.in_title_cell = False
@@ -1149,6 +1315,14 @@ class EpListCleanUI(QMainWindow):
                     attrs_dict = dict(attrs)
                     cls = attrs_dict.get('class', '')
                     
+                    if tag == 'meta':
+                        if attrs_dict.get('property') == 'og:image':
+                            img = attrs_dict.get('content')
+                            if img and img not in self.image_urls: self.image_urls.append(img)
+                        elif attrs_dict.get('property') == 'og:title':
+                            # Extract series title, stripping the MyAnimeList suffix
+                            self.series_title = attrs_dict.get('content').split(' - ')[0].strip()
+
                     if tag == 'td' and 'episode-number' in cls:
                         self.in_num_cell = True
                     elif tag == 'td' and 'episode-title' in cls:
@@ -1189,6 +1363,9 @@ class EpListCleanUI(QMainWindow):
             headers = NetSkrabb.HEADERS
 
             # Phase 1: Fetch the primary page link given in the UI
+            import urllib.parse
+            p = urllib.parse.urlsplit(url)
+            url = urllib.parse.urlunsplit((p.scheme, p.netloc, urllib.parse.quote(p.path), p.query, p.fragment))
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=10) as response:
                 html_text = response.read().decode('utf-8', errors='ignore')
@@ -1211,6 +1388,48 @@ class EpListCleanUI(QMainWindow):
                         parser.feed(html_extra)
                     except Exception:
                         pass
+
+            # Phase 3: Fetch the 'pictures' page to gather high-res posters for the picker
+            try:
+                base_url = url.split('/episode')[0]
+                pics_url = f"{base_url.rstrip('/')}/pics"
+                req_pics = urllib.request.Request(pics_url, headers=headers)
+                if "-DevDebug" in sys.argv: print(f"[DevDebug] Attempting to scrape pics from: {pics_url}")
+                with urllib.request.urlopen(req_pics, timeout=5) as resp_pics:
+                    html_pics = resp_pics.read().decode('utf-8', errors='ignore')
+                    # Capture CDN URLs and de-duplicate by Filename (Image ID) to avoid JPG/WebP duplicates
+                    # This regex targets the numeric ID immediately preceding the extension
+                    pic_matches = re.findall(r'(https://cdn\.myanimelist\.net/images/anime/\d+/(\d+)[^"\'\s/]*\.(?:jpg|jpeg|png|webp))', html_pics)
+                    id_map = {}
+                    for p_url, p_id in pic_matches:
+                        exclude = ['t.jpg', 'v.jpg', 'l.jpg', 't.png', 'v.png', 'l.png', 't.jpeg', 'v.jpeg', 'l.jpeg', 't.webp', 'v.webp', 'l.webp']
+                        if not any(p_url.lower().endswith(x) for x in exclude):
+                            # Prioritize .jpg over .webp if both exist for the same Image ID
+                            if p_id not in id_map or p_url.lower().endswith('.jpg'):
+                                id_map[p_id] = p_url
+                    
+                    for final_url in id_map.values():
+                        if final_url not in parser.image_urls: parser.image_urls.append(final_url)
+            except Exception:
+                pass
+
+            # Global de-duplication: Prioritize JPG over WebP across all gathered URLs
+            final_id_map = {}
+            for url in parser.image_urls:
+                # Extract the Image ID from the filename
+                id_match = re.search(r'/(\d+)[^/]*\.(?:jpg|jpeg|png|webp)', url)
+                if id_match:
+                    p_id = id_match.group(1)
+                    if p_id not in final_id_map or url.lower().endswith('.jpg'):
+                        final_id_map[p_id] = url
+                else:
+                    # Fallback for non-standard CDN paths
+                    final_id_map[url] = url
+            
+            self.scraped_images = list(final_id_map.values())
+            self.scraped_title = parser.series_title
+            if self.scraped_images:
+                self.selected_image_url = self.scraped_images[0]
 
             # De-duplicate rows by episode number and format output text cleanly
             unique_episodes = {}
@@ -1237,6 +1456,11 @@ class EpListCleanUI(QMainWindow):
             return
 
         selected_profile = self.profile_dropdown.currentText()
+        
+        # Trigger image download/conversion if the checkbox is active
+        if selected_profile == "MyAnimeList.net":
+            self.handle_image_download()
+
         cleaned_episodes = []
 
         if selected_profile == "MyAnimeList.net":
@@ -1406,8 +1630,11 @@ class EpListCleanUI(QMainWindow):
     
 
     def save_digits_config_directly(self, value):
+        self.update_config_key('min_digits', value)
+
+    def update_config_key(self, key, value):
         import json
-        self.app_config['min_digits'] = value
+        self.app_config[key] = value
         try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self.app_config, f, indent=4)
@@ -1502,7 +1729,70 @@ class EpListCleanUI(QMainWindow):
         self.img_choose_btn.setEnabled(self.img_download_checkbox.isChecked())
 
     def open_image_picker_dialog(self):
-        self.statusBar().showMessage("Image picker selection dialog window requested.")
+        if not self.scraped_images:
+            self.statusBar().showMessage("No images available. Please fetch a MyAnimeList URL first.")
+            return
+            
+        self.statusBar().showMessage("Loading image gallery...")
+        from PyQt6.QtCore import Qt
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        dialog = ImagePickerDialog(self.scraped_images, self)
+        QApplication.restoreOverrideCursor()
+        
+        if dialog.exec():
+            self.selected_image_url = dialog.selected_url
+            self.statusBar().showMessage(f"Selected image: {self.selected_image_url.split('/')[-1]}")
+
+    def handle_image_download(self):
+        if not self.img_download_checkbox.isChecked() or not self.selected_image_url:
+            return
+
+        from PyQt6.QtWidgets import QFileDialog
+        from PyQt6.QtGui import QImage
+        import os
+        import urllib.request
+        import re
+
+        save_dir = QFileDialog.getExistingDirectory(self, "Select Destination Folder for Cover Image")
+        if not save_dir:
+            return
+
+        try:
+            # Clean series title and original filename for safe path usage
+            clean_title = re.sub(r'[\\/*?:"<>|]', '', self.scraped_title).replace(' ', '_')
+            
+            # Use the URL already confirmed (and potentially upgraded to 'l') by the picker
+            target_url = self.selected_image_url
+            
+            orig_filename = target_url.split('/')[-1].split('?')[0]
+            orig_name, orig_ext = os.path.splitext(orig_filename)
+            
+            # Determine if conversion is needed based on user preferences
+            do_convert = self.app_config.get('convert_to_jpg', True)
+            is_already_jpg = orig_ext.lower() in ['.jpg', '.jpeg']
+            target_ext = ".jpg" if (do_convert and not is_already_jpg) else orig_ext
+            
+            # Construct the final filename: seriesname-imagename-folder.ext
+            final_filename = f"{clean_title}-{orig_name}-folder{target_ext}"
+            save_path = os.path.join(save_dir, final_filename)
+
+            if "-DevDebug" in sys.argv: print(f"[DevDebug] Downloading final image: {target_url}")
+            req = urllib.request.Request(target_url, headers=NetSkrabb.HEADERS)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                image_data = resp.read()
+
+            if do_convert and not is_already_jpg:
+                img = QImage()
+                img.loadFromData(image_data)
+                # Save as JPG with 90% quality as requested
+                img.save(save_path, "JPG", 90)
+            else:
+                with open(save_path, 'wb') as f:
+                    f.write(image_data)
+
+            self.statusBar().showMessage(f"Cover saved: {final_filename}")
+        except Exception as e:
+            self.statusBar().showMessage(f"Failed to save image: {str(e)}")
 
     def _roman_to_arabic(self, match):
         roman = match.group(0).upper()
