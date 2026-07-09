@@ -42,7 +42,7 @@ This software is released under the **GNU General Public License v3**.
     * **Asset:** Crab SVG Vector
     * **Author:** JoyPixels
     * **Source:** <a href="https://www.svgrepo.com/svg/401352/crab" target="_blank">https://www.svgrepo.com/svg/401352/crab</a>
-    * **License:** <a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a>
+    * **License:** <a href="NetSkrabb_internal/icons/LICENSE.txt" target="_blank">MIT License</a>
     * **Modifications:** Converted to PNG and color-adjusted for NetSkrabb branding.
 
 ---
