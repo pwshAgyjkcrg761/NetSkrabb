@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.09__08.38.58
+# VERSION: 2026.07.09__12.48.41
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -53,6 +53,9 @@
 #==============================================================================
 # </PROTECTED>
 import sys
+import os
+import ctypes
+import json
 from PyQt6.QtWidgets import (QApplication, QComboBox, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                              QPlainTextEdit, QMenuBar, QStatusBar)
@@ -60,7 +63,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.09__08.38.58"
+APP_VERSION = "2026.07.09__12.48.41"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -476,10 +479,26 @@ class EpListCleanUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"NetSkrabb v{APP_VERSION}")
-        import json
-        import os
+        
+        # Define and create internal directory structure
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        internal_dir = os.path.join(script_dir, "NetSkrabb_internal")
+        icons_dir = os.path.join(internal_dir, "icons")
+        os.makedirs(icons_dir, exist_ok=True)
 
-        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NetSkrabb.config.json")
+        # Set Window Icon and fix Windows Taskbar grouping
+        icon_path = os.path.join(icons_dir, "NetSkrabb-icon.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+            if sys.platform == 'win32':
+                try:
+                    myappid = 'pwshAgyjkcrg761.netskrabb.main.v1'
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                except Exception:
+                    pass
+        
+
+        self.config_path = os.path.join(internal_dir, "NetSkrabb.config.json")
         
         # Baseline fallback defaults
         default_settings = {
