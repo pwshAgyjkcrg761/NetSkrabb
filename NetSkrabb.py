@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.08__16.46.07
+# VERSION: 2026.07.09__08.38.58
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -60,7 +60,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.08__16.46.07"
+APP_VERSION = "2026.07.09__08.38.58"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -265,7 +265,7 @@ class SearchResultDialog(QDialog):
         container = QWidget()
         container_layout = QVBoxLayout(container)
         container_layout.setSpacing(8)
-        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setContentsMargins(0, 0, 8, 0)
         
         if not results:
             no_res = QLabel("No results found.")
@@ -495,7 +495,9 @@ class EpListCleanUI(QMainWindow):
             'theme': 'System',
             'profile': 'MyAnimeList.net',
             'url_history': [],
-            'convert_to_jpg': True
+            'convert_to_jpg': True,
+            'download_cover_image': False,
+            'last_save_path': ''
         }
 
         # Try to load existing configuration, otherwise use defaults
@@ -586,6 +588,8 @@ class EpListCleanUI(QMainWindow):
 
         # Connect enter key press in URL field to fetch functionality
         self.url_input.lineEdit().returnPressed.connect(self.placeholder_fetch)
+        # Enable auto-switching of profiles based on pasted/typed URLs
+        self.url_input.editTextChanged.connect(self.auto_detect_profile)
 
         # 3. Profile Selection Row
         profile_layout = QHBoxLayout()
@@ -674,12 +678,12 @@ class EpListCleanUI(QMainWindow):
         self.image_layout = QHBoxLayout()
         
         self.img_download_checkbox = QCheckBox("Download Cover Image", self)
-        self.img_download_checkbox.setChecked(False)
+        self.img_download_checkbox.setChecked(self.app_config.get('download_cover_image', False))
         self.img_download_checkbox.stateChanged.connect(self.toggle_img_button_state)
         self.image_layout.addWidget(self.img_download_checkbox)
         
         self.img_choose_btn = QPushButton("Choose Cover...", self)
-        self.img_choose_btn.setEnabled(False)
+        self.img_choose_btn.setEnabled(self.img_download_checkbox.isChecked())
         self.img_choose_btn.clicked.connect(self.open_image_picker_dialog)
         self.image_layout.addWidget(self.img_choose_btn)
         
@@ -705,6 +709,10 @@ class EpListCleanUI(QMainWindow):
         main_layout.addWidget(output_label)
         main_layout.addWidget(self.output_text)
 
+        # Monitor text changes to drive Smart Button states
+        self.input_text.textChanged.connect(self.update_button_states)
+        self.output_text.textChanged.connect(self.update_button_states)
+
         # 6. Quick Action Row (Clear & Copy)
         copy_layout = QHBoxLayout()
         self.clear_btn = QPushButton("Clear All")
@@ -713,6 +721,11 @@ class EpListCleanUI(QMainWindow):
         copy_layout.addWidget(self.clear_btn)
         
         copy_layout.addStretch()  # Pushes button to the right side
+        self.save_btn = QPushButton("Save Text...")
+        self.save_btn.setMinimumWidth(100)
+        self.save_btn.clicked.connect(self.save_output_to_file)
+        copy_layout.addWidget(self.save_btn)
+
         self.copy_btn = QPushButton("Copy to Clipboard")
         self.copy_btn.setMinimumWidth(150)
         copy_layout.addWidget(self.copy_btn)
@@ -814,7 +827,7 @@ class EpListCleanUI(QMainWindow):
 
         if is_search_query:
             if selected_profile == "MyAnimeList.net":
-                self.statusBar().showMessage(f"Searching MyAnimeList for: {url}...")
+                self.statusBar().showMessage(f"Searching MyAnimeList.net for: {url}...")
                 QApplication.processEvents()
                 try:
                     import urllib.parse
@@ -872,7 +885,7 @@ class EpListCleanUI(QMainWindow):
                     self.statusBar().showMessage(f"Search failed: {str(e)}")
                     return
             elif selected_profile == "epguides.com":
-                self.statusBar().showMessage(f"Checking epguides direct link for: {url}...")
+                self.statusBar().showMessage(f"Checking epguides.com direct link for: {url}...")
                 QApplication.processEvents()
                 import urllib.parse
                 import urllib.error
@@ -942,7 +955,7 @@ class EpListCleanUI(QMainWindow):
                                                 if not clean_title or len(clean_title) < 3:
                                                     clean_title = re.sub(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])', ' ', slug).replace('_', ' ').title()
                                                 
-                                                results.append({'title': clean_title, 'url': clean_url, 'extra': 'epguides'})
+                                                results.append({'title': clean_title, 'url': clean_url, 'extra': 'epguides.com'})
                             
                             if results:
                                 dialog = SearchResultDialog(results[:15], self)
@@ -953,7 +966,7 @@ class EpListCleanUI(QMainWindow):
                                     self.statusBar().showMessage("Search canceled.")
                                     return
                             else:
-                                self.statusBar().showMessage("No matching epguides links found.")
+                                self.statusBar().showMessage("No matching epguides.com links found.")
                                 return
                         except Exception as search_err:
                             self.statusBar().showMessage(f"Search match routing failed: {str(search_err)}")
@@ -965,7 +978,7 @@ class EpListCleanUI(QMainWindow):
                     self.statusBar().showMessage(f"Direct check lookup failed: {str(e)}")
                     return
             elif selected_profile == "Wikipedia.org":
-                self.statusBar().showMessage(f"Searching Wikipedia for: {url}...")
+                self.statusBar().showMessage(f"Searching Wikipedia.org for: {url}...")
                 QApplication.processEvents()
                 import urllib.parse
                 try:
@@ -1108,7 +1121,7 @@ class EpListCleanUI(QMainWindow):
                 # Extract the maze export ID parameter embedded in the source html page
                 maze_match = re.search(r'exportToCSVmaze\.asp\?maze=(\d+)', html_text, re.IGNORECASE)
                 if not maze_match:
-                    self.statusBar().showMessage("Could not locate CSV export ID on the epguides page.")
+                    self.statusBar().showMessage("Could not locate CSV export ID on the epguides.com page.")
                     return
                 
                 maze_id = maze_match.group(1)
@@ -1158,12 +1171,12 @@ class EpListCleanUI(QMainWindow):
                 
                 if episodes_found:
                     self.input_text.setPlainText('\n'.join(episodes_found))
-                    self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from epguides CSV.")
+                    self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from epguides.com CSV.")
                 else:
                     self.input_text.setPlainText("No valid episode rows could be parsed from the CSV stream.")
                 return
             except Exception as e:
-                self.statusBar().showMessage(f"Error fetching from epguides: {str(e)}")
+                self.statusBar().showMessage(f"Error fetching from epguides.com: {str(e)}")
                 return
 
         if selected_profile == "Wikipedia.org":
@@ -1282,13 +1295,13 @@ class EpListCleanUI(QMainWindow):
 
                 if episodes_found:
                     self.input_text.setPlainText('\n'.join(episodes_found))
-                    self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} titles from Wikipedia.")
+                    self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} titles from Wikipedia.org.")
                 else:
-                    self.input_text.setPlainText("No valid episode titles could be identified from the Wikipedia tables.")
+                    self.input_text.setPlainText("No valid episode titles could be identified from the Wikipedia.org tables.")
                     self.statusBar().showMessage("Fetch complete, but no matching table columns found.")
                 return
             except Exception as e:
-                self.statusBar().showMessage(f"Error fetching from Wikipedia: {str(e)}")
+                self.statusBar().showMessage(f"Error fetching from Wikipedia.org: {str(e)}")
                 return
 
         self.statusBar().showMessage("Fetching data from MyAnimeList.net...")
@@ -1320,7 +1333,7 @@ class EpListCleanUI(QMainWindow):
                             img = attrs_dict.get('content')
                             if img and img not in self.image_urls: self.image_urls.append(img)
                         elif attrs_dict.get('property') == 'og:title':
-                            # Extract series title, stripping the MyAnimeList suffix
+                            # Extract series title, stripping the MyAnimeList.net suffix
                             self.series_title = attrs_dict.get('content').split(' - ')[0].strip()
 
                     if tag == 'td' and 'episode-number' in cls:
@@ -1440,7 +1453,7 @@ class EpListCleanUI(QMainWindow):
 
             if episodes_found:
                 self.input_text.setPlainText('\n'.join(episodes_found))
-                self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from MyAnimeList.")
+                self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from MyAnimeList.net.")
             else:
                 self.input_text.setPlainText("No episodes could be found using the structural HTML parser.")
                 self.statusBar().showMessage("Fetch complete, but no matching table rows found.")
@@ -1458,8 +1471,9 @@ class EpListCleanUI(QMainWindow):
         selected_profile = self.profile_dropdown.currentText()
         
         # Trigger image download/conversion if the checkbox is active
+        saved_img = None
         if selected_profile == "MyAnimeList.net":
-            self.handle_image_download()
+            saved_img = self.handle_image_download()
 
         cleaned_episodes = []
 
@@ -1515,26 +1529,83 @@ class EpListCleanUI(QMainWindow):
 
         if cleaned_episodes:
             self.output_text.setPlainText('\n'.join(cleaned_episodes))
-            self.statusBar().showMessage(f"Successfully cleaned {len(cleaned_episodes)} episodes.")
+            self.output_text.setFocus()
+            self.output_text.selectAll()
+            status_msg = f"Successfully cleaned {len(cleaned_episodes)} episodes."
+            if saved_img:
+                status_msg += f" | Cover saved: {saved_img}"
+            self.statusBar().showMessage(status_msg)
         else:
             self.statusBar().showMessage("Could not find any matching episode patterns.")
 
     def placeholder_copy(self):
         output_content = self.output_text.toPlainText()
         if not output_content.strip():
-            self.statusBar().showMessage("No cleaned text to copy.")
             return
             
         clipboard = QApplication.clipboard()
         clipboard.setText(output_content)
+        
+        from PyQt6.QtCore import QTimer
+        self.copy_btn.setText("✔ Copied!")
+        self.copy_btn.setEnabled(False)
         self.statusBar().showMessage("Cleaned text successfully copied to clipboard.")
+        
+        QTimer.singleShot(1500, self.reset_copy_button)
 
+    def reset_copy_button(self):
+        self.copy_btn.setText("Copy to Clipboard")
+        # Ensure it stays enabled only if there is still content in the output box
+        if self.output_text.toPlainText().strip():
+            self.copy_btn.setEnabled(True)
+    
+    def update_button_states(self):
+        # Dynamically enable/disable buttons based on whether text boxes are empty
+        has_input = bool(self.input_text.toPlainText().strip())
+        has_output = bool(self.output_text.toPlainText().strip())
+        
+        self.clean_btn.setEnabled(has_input)
+        self.save_btn.setEnabled(has_output)
+        # If the copy button is currently in its "Copied!" feedback state, don't force it back to enabled
+        if self.copy_btn.text() == "Copy to Clipboard":
+            self.copy_btn.setEnabled(has_output)
+    
     def clear_fields(self):
         # Clear the visible text in the input area without wiping the history items
         self.url_input.setCurrentText("")
         self.input_text.clear()
         self.output_text.clear()
         self.statusBar().showMessage("Ready")
+        
+    def save_output_to_file(self):
+        content = self.output_text.toPlainText()
+        if not content.strip():
+            self.statusBar().showMessage("No cleaned text to save.")
+            return
+
+        import re
+        import os
+        from PyQt6.QtWidgets import QFileDialog
+        
+        # Sanitize title for filename
+        clean_title = re.sub(r'[\\/*?:"<>|]', '', self.scraped_title).strip()
+        default_name = f"{clean_title}.txt" if clean_title else "Cleaned_Episodes.txt"
+
+        start_path = self.app_config.get('last_save_path', '')
+        initial_path = os.path.join(start_path, default_name)
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Cleaned Text", initial_path, "Text Files (*.txt);;All Files (*)"
+        )
+        
+        if file_path:
+            self.update_config_key('last_save_path', os.path.dirname(file_path))
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                self.statusBar().showMessage(f"File saved: {os.path.basename(file_path)}")
+            except Exception as e:
+                self.statusBar().showMessage(f"Failed to save file: {str(e)}")
 
     def load_source_file(self):
         import os
@@ -1726,11 +1797,13 @@ class EpListCleanUI(QMainWindow):
         self.abs_container.setVisible(is_anime)
 
     def toggle_img_button_state(self, state):
-        self.img_choose_btn.setEnabled(self.img_download_checkbox.isChecked())
+        is_checked = self.img_download_checkbox.isChecked()
+        self.img_choose_btn.setEnabled(is_checked)
+        self.update_config_key('download_cover_image', is_checked)
 
     def open_image_picker_dialog(self):
         if not self.scraped_images:
-            self.statusBar().showMessage("No images available. Please fetch a MyAnimeList URL first.")
+            self.statusBar().showMessage("No images available. Please fetch a MyAnimeList.net URL first.")
             return
             
         self.statusBar().showMessage("Loading image gallery...")
@@ -1753,9 +1826,11 @@ class EpListCleanUI(QMainWindow):
         import urllib.request
         import re
 
-        save_dir = QFileDialog.getExistingDirectory(self, "Select Destination Folder for Cover Image")
+        start_path = self.app_config.get('last_save_path', '')
+        save_dir = QFileDialog.getExistingDirectory(self, "Select Destination Folder for Cover Image", start_path)
         if not save_dir:
             return
+        self.update_config_key('last_save_path', save_dir)
 
         try:
             # Clean series title and original filename for safe path usage
@@ -1763,6 +1838,12 @@ class EpListCleanUI(QMainWindow):
             
             # Use the URL already confirmed (and potentially upgraded to 'l') by the picker
             target_url = self.selected_image_url
+            
+            # Auto-upgrade to Large version for MyAnimeList.net CDN assets if not manually selected
+            if "cdn.myanimelist.net" in target_url:
+                u_base, u_ext = os.path.splitext(target_url)
+                if not u_base.endswith('l'):
+                    target_url = f"{u_base}l{u_ext}"
             
             orig_filename = target_url.split('/')[-1].split('?')[0]
             orig_name, orig_ext = os.path.splitext(orig_filename)
@@ -1790,9 +1871,10 @@ class EpListCleanUI(QMainWindow):
                 with open(save_path, 'wb') as f:
                     f.write(image_data)
 
-            self.statusBar().showMessage(f"Cover saved: {final_filename}")
+            return final_filename
         except Exception as e:
             self.statusBar().showMessage(f"Failed to save image: {str(e)}")
+            return None
 
     def _roman_to_arabic(self, match):
         roman = match.group(0).upper()
@@ -1890,6 +1972,19 @@ class EpListCleanUI(QMainWindow):
                 json.dump(self.app_config, f, indent=4)
         except Exception:
             pass
+    
+    def auto_detect_profile(self, text):
+        # Scan for domain fingerprints and update the profile dropdown automatically
+        lower_text = text.lower()
+        # Only auto-switch if the input looks like a URL to avoid interrupting search queries
+        if not (lower_text.startswith("http") or "www." in lower_text):
+            return
+        if "myanimelist.net" in lower_text:
+            self.profile_dropdown.setCurrentText("MyAnimeList.net")
+        elif "epguides.com" in lower_text:
+            self.profile_dropdown.setCurrentText("epguides.com")
+        elif "wikipedia.org" in lower_text:
+            self.profile_dropdown.setCurrentText("Wikipedia.org")
     
     def add_to_history(self, text):
         if not text:
