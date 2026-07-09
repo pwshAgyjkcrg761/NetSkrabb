@@ -1,0 +1,23 @@
+SUMMARY:
+
+Implemented a high-readability User Manual, updated legal credit systems for external assets, and expanded developer debugging flags.
+
+DETAILED CHANGES:
+
+- ADDED: 'Manual' dialog under Help menu featuring a scrollable, modern Segoe UI interface.
+
+- ADDED: Detailed Usage Guide covering search workflows, profile logic, and absolute numbering.
+
+- ADDED: Icon Credits section to the 'About' dialog acknowledging JoyPixels/SVGRepo (MIT).
+
+- ADDED: 'View Icon License' button in 'About' dialog for instant local LICENSE.txt access.
+
+- ADDED: Expanded CLI flag support for '-Dev' and '-DBG' alongside existing '-DevDebug'.
+
+- UPDATED: Switched internal link handling to os.startfile for more reliable Windows file execution.
+
+- FIXED: Resolved QBrowser navigation error when clicking local file links in UI dialogs.
+
+- FIXED: Corrected placeholder text in Manual documentation to match NetSkrabb logic.
+
+- REFACTORED: Unified CSS styling across all secondary popups for UI consistency.
