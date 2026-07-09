@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.09__12.48.41
+# VERSION: 2026.07.09__14.56.00
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -63,7 +63,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.09__12.48.41"
+APP_VERSION = "2026.07.09__14.56.00"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -374,7 +374,8 @@ class ImagePickerDialog(QDialog):
         import urllib.request
         
         row, col = 0, 0
-        if "-DevDebug" in sys.argv: print(f"[DevDebug] Picker starting load for {len(self.image_urls)} URLs.")
+        is_dev = any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"])
+        if is_dev: print(f"[DevDebug] Picker starting load for {len(self.image_urls)} URLs.")
         for url in self.image_urls:
             # Check if this icon is already in the parent's cache
             if url in self.parent().thumbnail_cache:
@@ -396,7 +397,7 @@ class ImagePickerDialog(QDialog):
                     row += 1
                 continue
 
-            if "-DevDebug" in sys.argv: print(f"[DevDebug] Trying to load: {url}")
+            if is_dev: print(f"[DevDebug] Trying to load: {url}")
             try:
                 req = urllib.request.Request(url, headers=NetSkrabb.HEADERS)
                 with urllib.request.urlopen(req, timeout=5) as response:
@@ -428,7 +429,7 @@ class ImagePickerDialog(QDialog):
                 
                 QApplication.processEvents()
             except Exception as e:
-                if "-DevDebug" in sys.argv: print(f"[DevDebug] Error loading {url}: {e}")
+                if is_dev: print(f"[DevDebug] Error loading {url}: {e}")
                 continue
 
     def handle_selection_ui(self, clicked_btn):
@@ -818,6 +819,11 @@ class EpListCleanUI(QMainWindow):
         about_action = QAction("&About", self)
         about_action.setStatusTip("Show application version and license details")
         about_action.triggered.connect(self.open_about_dialog)
+        manual_action = QAction("&Manual", self)
+        manual_action.setStatusTip("Show the user manual and usage guide")
+        manual_action.triggered.connect(self.open_manual_dialog)
+        
+        help_menu.addAction(manual_action)
         help_menu.addAction(about_action)
 
     def placeholder_fetch(self):
@@ -1426,7 +1432,8 @@ class EpListCleanUI(QMainWindow):
                 base_url = url.split('/episode')[0]
                 pics_url = f"{base_url.rstrip('/')}/pics"
                 req_pics = urllib.request.Request(pics_url, headers=headers)
-                if "-DevDebug" in sys.argv: print(f"[DevDebug] Attempting to scrape pics from: {pics_url}")
+                if any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"]):
+                    print(f"[DevDebug] Attempting to scrape pics from: {pics_url}")
                 with urllib.request.urlopen(req_pics, timeout=5) as resp_pics:
                     html_pics = resp_pics.read().decode('utf-8', errors='ignore')
                     # Capture CDN URLs and de-duplicate by Filename (Image ID) to avoid JPG/WebP duplicates
@@ -1674,31 +1681,176 @@ class EpListCleanUI(QMainWindow):
             pass
 
     def open_about_dialog(self):
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox
+        from PyQt6.QtCore import Qt, QUrl
+        import os
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("About NetSkrabb")
+        dialog.resize(500, 420)
+        layout = QVBoxLayout(dialog)
+
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setStyleSheet("""
+            QTextBrowser {
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 14px;
+                line-height: 1.5;
+                color: palette(text);
+                background-color: palette(base);
+                border: none;
+                padding: 10px;
+            }
+            h2 { color: #007acc; margin-top: 0; }
+            b { color: #007acc; }
+            a { color: #007acc; text-decoration: none; }
+        """)
+
+        about_text = (
+            f"<h2>NetSkrabb v{APP_VERSION}</h2>"
+            f"Copyright (C) 2026 pwshAgyjkcrg761<br>"
+            f"Licensed under GPLv3<br><br>"
+            f"This program is free software: you can redistribute it and/or modify "
+            f"it under the terms of the GNU General Public License as published by "
+            f"the Free Software Foundation, either version 3 of the License, or "
+            f"(at your option) any later version.<br><br>"
+            f"<b>Icon Credits:</b><br>"
+            f"'Crab' by JoyPixels via <a href='https://www.svgrepo.com/svg/401352/crab'>SVGRepo</a>.<br>"
+            f"Used under MIT License. Modified by pwshAgyjkcrg761 (Color/Format).<br><br>"
+            f"You should have received a copy of the GNU General Public License "
+            f"along with this program. If not, see "
+            f"<a href='https://www.gnu.org/licenses/gpl-3.0.html'>https://www.gnu.org/licenses/gpl-3.0.html</a>."
+        )
+
+        browser.setHtml(about_text)
+        layout.addWidget(browser)
+
+        # Standard button box with a custom Action button for the license file
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        license_btn = buttons.addButton("View Icon License", QDialogButtonBox.ButtonRole.ActionRole)
+        
+        def view_license():
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            lic_path = os.path.join(script_dir, "NetSkrabb_internal", "icons", "LICENSE.txt")
+            if os.path.exists(lic_path):
+                os.startfile(lic_path)
+            else:
+                self.statusBar().showMessage(f"Error: {lic_path} not found.")
+
+        license_btn.clicked.connect(view_license)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        
+        dialog.exec()
+
+    def open_manual_dialog(self):
         from PyQt6.QtWidgets import QMessageBox
         from PyQt6.QtCore import Qt
         
-        about_text = (
-            f"<b>NetSkrabb v{APP_VERSION}</b><br>"
-            "Copyright (C) 2026 pwshAgyjkcrg761<br>"
-            "GPLv3<br><br>"
-            "This program is free software: you can redistribute it and/or modify "
-            "it under the terms of the GNU General Public License as published by "
-            "the Free Software Foundation, either version 3 of the License, or "
-            "(at your option) any later version.<br><br>"
-            "This program is distributed in the hope that it will be useful, "
-            "but WITHOUT ANY WARRANTY; without even the implied warranty of "
-            "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the "
-            "GNU General Public License for more details.<br><br>"
-            "You should have received a copy of the GNU General Public License "
-            "along with this program. If not, see "
-            "<a href=\"https://www.gnu.org/licenses/gpl-3.0.html\">https://www.gnu.org/licenses/gpl-3.0.html</a>."
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("NetSkrabb Manual")
+        dialog.resize(650, 550) # Constrain size to prevent taskbar overflow
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Using QTextBrowser provides native scrollbars and handles HTML formatting
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setStyleSheet("""
+            QTextBrowser {
+                font-family: 'Segoe UI', 'Roboto', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                color: palette(text);
+                background-color: palette(base);
+                border: none;
+                padding: 20px;
+            }
+            h1 { color: #007acc; font-size: 22px; margin-bottom: 0px; }
+            h2 { color: #007acc; font-size: 18px; border-bottom: 1px solid #444; padding-bottom: 5px; margin-top: 25px; }
+            b { color: #007acc; }
+            .license-box { 
+                background-color: rgba(128, 128, 128, 0.1); 
+                border-left: 4px solid #007acc; 
+                padding: 15px; 
+                font-family: monospace; 
+                font-size: 12px;
+                margin: 15px 0;
+            }
+            .step-card {
+                background-color: rgba(0, 122, 204, 0.05);
+                border: 1px solid rgba(0, 122, 204, 0.2);
+                border-radius: 6px;
+                padding: 12px;
+                margin-bottom: 10px;
+            }
+            code { 
+                font-family: 'Consolas', monospace; 
+                background-color: rgba(128, 128, 128, 0.2); 
+                padding: 2px 5px; 
+                border-radius: 3px; 
+            }
+            a { color: #007acc; text-decoration: none; }
+        """)
+        
+        manual_text = (
+            f"<h1>NetSkrabb.py v{APP_VERSION}</h1>"
+            f"<p style='margin-top: 0;'>MANUAL & USAGE GUIDE | Copyright (C) 2026 pwshAgyjkcrg761</p>"
+            
+            f"<br>"
+
+            f"<h2>OVERVIEW</h2>"
+            f"<p>NetSkrabb is a high-performance metadata scraper and filename formatter designed to "
+            f"standardize media libraries. It intelligently fetches episode titles from major web "
+            f"sources and processes them into Windows-legal file system names.</p>"
+
+            f"<h2>DEPENDENCIES</h2>"
+            f"<ul>"
+            f"<li><b>Python:</b> Built with Python 3.14.5.</li>"
+            f"<li><b>PyQt6:</b> Orchestrates the graphical user interface.</li>"
+            f"<li><b>Beautiful Soup 4:</b> Powers the HTML parsing engine for Western profiles.</li>"
+            f"</ul>"
+
+            f"<h2>USAGE WORKFLOW</h2>"
+            f"<div class='step-card'><b>1. URL / Search:</b> Enter a direct URL or type a series name in the URL box.</div>"
+            f"<div class='step-card'><b>2. Profile:</b> Ensure the 'Site Profile' matches your target source.</div>"
+            f"<div class='step-card'><b>3. Fetch:</b> Click 'Fetch Text' to pull raw metadata into the input area.</div>"
+            f"<div class='step-card'><b>4. Clean:</b> Click 'CLEAN & FORMAT' to finalize the filename list.</div>"
+
+            f"<h2>CORE FEATURES</h2>"
+            f"<p><b>Site Profile:</b> Determines parsing logic. <b>MyAnimeList</b> handles Japanese animation, "
+            f"while <b>epguides</b> and <b>Wikipedia</b> target Western television series.</p>"
+            
+            f"<p><b>Filters:</b> Access via <code>Tools > Filters</code>. This menu controls pipeline stages "
+            f"like Roman numeral translation, marker stripping, and Windows-illegal character sanitation.</p>"
+            
+            f"<p><b>Absolute Numbering:</b> (Anime Only) Overrides source numbering with a continuous "
+            f"sequence starting from your defined integer.</p>"
+
+            f"<p><b>Developer Flags:</b> Launch with <code>-DevDebug</code>, <code>-Dev</code>, or <code>-DBG</code> "
+            f"to enable terminal logging of network requests and image metadata.</p>"
+
+            f"<h2>NOTES</h2>"
+            f"<ul>"
+            f"<li><b>Cover Images:</b> (Anime Only) Enable 'Download Cover Image' to save high-resolution "
+            f"posters as <code>folder.jpg</code>.</li>"
+            f"<li><b>Manual Overrides:</b> The top text box is fully editable. You can correct "
+            f"source metadata manually before triggering the clean pass.</li>"
+            f"</ul>"
+            f"<hr><p style='text-align: center; color: #888888;'><small>Licensed under GPLv3. See the <b>About</b> section for full legal details.</small></p>"
         )
         
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("About NetSkrabb")
-        msg_box.setTextFormat(Qt.TextFormat.RichText)
-        msg_box.setText(about_text)
-        msg_box.exec()
+        browser.setHtml(manual_text)
+        layout.addWidget(browser)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        
+        dialog.exec()
 
     def handle_theme_change(self):
         import json
@@ -1876,7 +2028,8 @@ class EpListCleanUI(QMainWindow):
             final_filename = f"{clean_title}-{orig_name}-folder{target_ext}"
             save_path = os.path.join(save_dir, final_filename)
 
-            if "-DevDebug" in sys.argv: print(f"[DevDebug] Downloading final image: {target_url}")
+            if any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"]):
+                print(f"[DevDebug] Downloading final image: {target_url}")
             req = urllib.request.Request(target_url, headers=NetSkrabb.HEADERS)
             with urllib.request.urlopen(req, timeout=10) as resp:
                 image_data = resp.read()
