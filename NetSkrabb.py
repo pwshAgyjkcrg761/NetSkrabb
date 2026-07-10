@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.10__10.02.48
+# VERSION: 2026.07.10__12.36.15
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -63,7 +63,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.10__10.02.48"
+APP_VERSION = "2026.07.10__12.36.15"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -80,6 +80,25 @@ class NetSkrabb(QMainWindow):
         'Sec-Fetch-Site': 'cross-site',
         'Sec-Fetch-User': '?1'
     }
+
+    @staticmethod
+    def get_dynamic_headers(url):
+        """Returns a copy of HEADERS with a Referer matched to the target domain."""
+        headers = NetSkrabb.HEADERS.copy()
+        low_url = url.lower()
+        
+        if "myanimelist.net" in low_url:
+            headers['Referer'] = "https://myanimelist.net/"
+        elif "wikipedia.org" in low_url:
+            headers['Referer'] = "https://www.wikipedia.org/"
+        elif "epguides.com" in low_url:
+            headers['Referer'] = "https://epguides.com/"
+        elif "theposterdb.com" in low_url:
+            headers['Referer'] = "https://theposterdb.com/"
+        elif "duckduckgo.com" in low_url:
+            headers['Referer'] = "https://duckduckgo.com/"
+            
+        return headers
 
 class FilterDialog(QDialog):
     def __init__(self, current_settings, parent=None):
@@ -337,7 +356,8 @@ class ImagePickerDialog(QDialog):
         self.setWindowTitle("Select Cover Image")
         self.setModal(True)
         self.resize(800, 600)
-        self.selected_url = None
+        self.selected_urls = []
+        self.last_selected_index = None
         self.image_urls = image_urls
         self.image_buttons = [] # Initialize here to ensure attribute exists for loader
         
@@ -416,7 +436,7 @@ class ImagePickerDialog(QDialog):
                         data = f.read()
                 else:
                     if is_dev: print(f"[DevDebug] Downloading thumb: {url}")
-                    req = urllib.request.Request(url, headers=NetSkrabb.HEADERS)
+                    req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
                     with urllib.request.urlopen(req, timeout=5) as response:
                         data = response.read()
                     with open(cache_path, 'wb') as f:
@@ -456,64 +476,88 @@ class ImagePickerDialog(QDialog):
         import urllib.request
         import os
 
-        # Visual highlighting
-        for btn in self.image_buttons:
-            btn.setStyleSheet("border: none; padding: 2px;")
-        clicked_btn.setStyleSheet("border: 3px solid #007acc; border-radius: 5px; padding: 2px;")
-        
-        self.selected_url = clicked_btn.property("img_url")
-        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-        self.info_label.setText("Checking for high-res version details...")
-        self.info_label.setStyleSheet("color: #007acc; font-style: italic;")
-        QApplication.processEvents()
+        from PyQt6.QtCore import Qt
+        modifiers = QApplication.keyboardModifiers()
+        curr_idx = self.image_buttons.index(clicked_btn)
 
-        # Attempt to fetch metadata for the 'Large' version
-        target_url = self.selected_url
-        tpdb_id = clicked_btn.property("tpdb_id")
-
-        # Prioritize ThePosterDB API if a specific ID is mapped
-        if tpdb_id:
-            target_url = f"https://theposterdb.com/api/assets/{tpdb_id}/view"
-        # Otherwise apply MAL-specific 'l' suffix upgrade to MAL CDN links
-        elif "cdn.myanimelist.net" in target_url:
-            name_base, ext_part = os.path.splitext(target_url)
-            if not name_base.endswith('l'):
-                target_url = f"{name_base}l{ext_part}"
-            
-        if target_url.endswith('/view'):
-            p_id = target_url.split('/')[-2]
-            cache_fn = f"{p_id}_view.jpg"
+        # 1. Determine Selection Set based on keyboard modifiers
+        if modifiers == Qt.KeyboardModifier.ShiftModifier and self.last_selected_index is not None:
+            start = min(self.last_selected_index, curr_idx)
+            end = max(self.last_selected_index, curr_idx)
+            # Add range to current selection
+            new_urls = [self.image_buttons[i].property("img_url") for i in range(start, end + 1)]
+            for url in new_urls:
+                if url not in self.selected_urls: self.selected_urls.append(url)
+        elif modifiers == Qt.KeyboardModifier.ControlModifier:
+            url = clicked_btn.property("img_url")
+            if url in self.selected_urls:
+                self.selected_urls.remove(url)
+            else:
+                self.selected_urls.append(url)
         else:
-            cache_fn = target_url.split('/')[-1].split('?')[0]
-        cache_path = os.path.join(self.parent().cache_dir, cache_fn)
-        
-        try:
-            if os.path.exists(cache_path):
-                with open(cache_path, 'rb') as f:
-                    l_data = f.read()
-            else:
-                req = urllib.request.Request(target_url, headers=NetSkrabb.HEADERS)
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    l_data = resp.read()
-                with open(cache_path, 'wb') as f:
-                    f.write(l_data)
-            
-            l_pix = QPixmap()
-            if l_pix.loadFromData(l_data):
-                self.selected_url = target_url
-                size_kb = len(l_data) / 1024
-                self.info_label.setText(f"Large Version: {l_pix.width()}x{l_pix.height()} | {size_kb:.1f} KB")
-                self.info_label.setStyleSheet("color: #28a745; font-weight: bold;")
-            else:
-                self.info_label.setText("Standard Version selected (High-res data invalid).")
-                self.info_label.setStyleSheet("color: #888888;")
-        except Exception:
-            self.info_label.setText("Standard Version selected (High-res unavailable).")
-            self.info_label.setStyleSheet("color: #888888;")
+            # Single select
+            self.selected_urls = [clicked_btn.property("img_url")]
 
-        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
-        # Transfer current metadata summary to the tooltip once the image is selected
-        clicked_btn.setToolTip(self.info_label.text())
+        self.last_selected_index = curr_idx
+
+        # 2. Visual highlighting & State Update
+        from PyQt6.QtGui import QPixmap
+        import urllib.request
+        import os
+
+        # 2. Visual highlighting
+        for btn in self.image_buttons:
+            if btn.property("img_url") in self.selected_urls:
+                btn.setStyleSheet("border: 3px solid #007acc; border-radius: 5px; padding: 2px;")
+            else:
+                btn.setStyleSheet("border: none; padding: 2px;")
+
+        # 3. Status and Metadata Update
+        count = len(self.selected_urls)
+        self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(count > 0)
+
+        if count == 1:
+            target_url = self.selected_urls[0]
+            tpdb_id = clicked_btn.property("tpdb_id") # Use the clicked button's context
+            
+            # Metadata upgrade logic for single selection
+            if tpdb_id:
+                target_url = f"https://theposterdb.com/api/assets/{tpdb_id}/view"
+            elif "cdn.myanimelist.net" in target_url:
+                base, ext = os.path.splitext(target_url)
+                if not base.endswith('l'): target_url = f"{base}l{ext}"
+            
+            self.info_label.setText("Checking high-res details...")
+            self.info_label.setStyleSheet("color: #007acc; font-style: italic;")
+            QApplication.processEvents()
+
+            if target_url.endswith('/view'):
+                p_id = target_url.split('/')[-2]
+                cache_fn = f"{p_id}_view.jpg"
+            else:
+                cache_fn = target_url.split('/')[-1].split('?')[0]
+            cache_path = os.path.join(self.parent().cache_dir, cache_fn)
+
+            try:
+                if os.path.exists(cache_path):
+                    with open(cache_path, 'rb') as f: l_data = f.read()
+                else:
+                    req = urllib.request.Request(target_url, headers=NetSkrabb.get_dynamic_headers(target_url))
+                    with urllib.request.urlopen(req, timeout=5) as resp: l_data = resp.read()
+                    with open(cache_path, 'wb') as f: f.write(l_data)
+                
+                pix = QPixmap()
+                if pix.loadFromData(l_data):
+                    size_kb = len(l_data) / 1024
+                    self.info_label.setText(f"Large Version: {pix.width()}x{pix.height()} | {size_kb:.1f} KB")
+                    self.info_label.setStyleSheet("color: #28a745; font-weight: bold;")
+                else:
+                    self.info_label.setText("1 image selected (Metadata error).")
+            except Exception:
+                self.info_label.setText("1 image selected (Metadata unavailable).")
+        else:
+            self.info_label.setText(f"Selected: {count} items")
+            self.info_label.setStyleSheet("color: #007acc; font-weight: bold;" if count > 0 else "color: #888888;")
 
 class EpListCleanUI(QMainWindow):
     def __init__(self):
@@ -751,6 +795,25 @@ class EpListCleanUI(QMainWindow):
         
         main_layout.addLayout(self.image_layout)
 
+        # Progress bar for batch operations
+        from PyQt6.QtWidgets import QProgressBar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #444;
+                border-radius: 3px;
+                height: 18px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #007acc;
+            }
+        """)
+        main_layout.addWidget(self.progress_bar)
+
         # 4. Action Button
         self.clean_btn = QPushButton("CLEAN && FORMAT")
         # Make the main action button stand out slightly with a larger font
@@ -880,7 +943,7 @@ class EpListCleanUI(QMainWindow):
         # Reset image metadata for new fetch session
         self.scraped_images = []
         self.scraped_title = "Series"
-        self.selected_image_url = None
+        self.selected_image_urls = []
 
         self.add_to_history(url)
 
@@ -888,12 +951,18 @@ class EpListCleanUI(QMainWindow):
         
         # Handle ThePosterDB specifically for image-only scraping
         if "theposterdb.com" in url.lower():
+            if selected_profile == "MyAnimeList.net":
+                self.statusBar().showMessage("ThePosterDB URLs are not supported with the MyAnimeList profile.")
+                return
+            if "/set/" not in url.lower():
+                self.statusBar().showMessage("ThePosterDB URLs must be a 'Set' link (contain /set/).")
+                return
             self.statusBar().showMessage("Fetching posters from ThePosterDB...")
             QApplication.processEvents()
             try:
                 import urllib.request
                 import re
-                req = urllib.request.Request(url, headers=NetSkrabb.HEADERS)
+                req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     html_text = resp.read().decode('utf-8', errors='ignore')
                 
@@ -924,7 +993,7 @@ class EpListCleanUI(QMainWindow):
                 
                 if unique_posters:
                     self.scraped_images = unique_posters
-                    self.selected_image_url = self.scraped_images[0]
+                    self.selected_image_urls = [self.scraped_images[0]]
                     # Attempt to pull a series title from the page metadata
                     title_match = re.search(r'<title>(.*?)</title>', html_text, re.IGNORECASE)
                     if title_match:
@@ -954,7 +1023,7 @@ class EpListCleanUI(QMainWindow):
                     query_encoded = urllib.parse.quote(url)
                     search_url = f"https://myanimelist.net/search/all?q={query_encoded}"
                     
-                    req_search = urllib.request.Request(search_url, headers=headers)
+                    req_search = urllib.request.Request(search_url, headers=NetSkrabb.get_dynamic_headers(search_url))
                     with urllib.request.urlopen(req_search, timeout=10) as resp:
                         search_html = resp.read().decode('utf-8', errors='ignore')
                     
@@ -1018,7 +1087,7 @@ class EpListCleanUI(QMainWindow):
                     direct_guess_url = f"https://epguides.com/{clean_name}/"
                 
                 try:
-                    req_test = urllib.request.Request(direct_guess_url, headers=headers)
+                    req_test = urllib.request.Request(direct_guess_url, headers=NetSkrabb.get_dynamic_headers(direct_guess_url))
                     with urllib.request.urlopen(req_test, timeout=7) as resp_test:
                         url = direct_guess_url
                         self.url_input.setCurrentText(url)
@@ -1031,7 +1100,7 @@ class EpListCleanUI(QMainWindow):
                             query_encoded = urllib.parse.quote(f"{url} site:epguides.com")
                             ddg_url = f"https://html.duckduckgo.com/html/?q={query_encoded}"
                             
-                            req_ddg = urllib.request.Request(ddg_url, headers=headers)
+                            req_ddg = urllib.request.Request(ddg_url, headers=NetSkrabb.get_dynamic_headers(ddg_url))
                             with urllib.request.urlopen(req_ddg, timeout=10) as resp_ddg:
                                 ddg_html = resp_ddg.read().decode('utf-8', errors='ignore')
                             
@@ -1106,7 +1175,7 @@ class EpListCleanUI(QMainWindow):
                     query_encoded = urllib.parse.quote(f"{url} site:en.wikipedia.org \"List of\" episodes television series")
                     search_url = f"https://html.duckduckgo.com/html/?q={query_encoded}"
                     
-                    req_search = urllib.request.Request(search_url, headers=headers)
+                    req_search = urllib.request.Request(search_url, headers=NetSkrabb.get_dynamic_headers(search_url))
                     with urllib.request.urlopen(req_search, timeout=10) as resp:
                         search_html = resp.read().decode('utf-8', errors='ignore')
                     
@@ -1175,7 +1244,7 @@ class EpListCleanUI(QMainWindow):
                 try:
                     # Reference class-level headers
                     headers = NetSkrabb.HEADERS
-                    req = urllib.request.Request(url, headers=headers)
+                    req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
                     with urllib.request.urlopen(req, timeout=5) as response:
                         html_text = response.read().decode('utf-8', errors='ignore')
                     
@@ -1197,7 +1266,7 @@ class EpListCleanUI(QMainWindow):
                 try:
                     # Reference class-level headers
                     headers = NetSkrabb.HEADERS
-                    req = urllib.request.Request(url, headers=headers)
+                    req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
                     with urllib.request.urlopen(req, timeout=5) as response:
                         html_text = response.read().decode('utf-8', errors='ignore')
                     
@@ -1233,8 +1302,7 @@ class EpListCleanUI(QMainWindow):
             self.statusBar().showMessage("Fetching data from epguides.com...")
             try:
                 # Reference class-level headers
-                headers = NetSkrabb.HEADERS
-                req = urllib.request.Request(url, headers=headers)
+                req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
                 with urllib.request.urlopen(req, timeout=10) as response:
                     html_text = response.read().decode('utf-8', errors='ignore')
                 
@@ -1247,7 +1315,7 @@ class EpListCleanUI(QMainWindow):
                 maze_id = maze_match.group(1)
                 csv_url = f"https://epguides.com/common/exportToCSVmaze.asp?maze={maze_id}"
                 
-                req_csv = urllib.request.Request(csv_url, headers=headers)
+                req_csv = urllib.request.Request(csv_url, headers=NetSkrabb.get_dynamic_headers(csv_url))
                 with urllib.request.urlopen(req_csv, timeout=10) as csv_resp:
                     csv_text = csv_resp.read().decode('utf-8', errors='ignore')
                 
@@ -1331,7 +1399,7 @@ class EpListCleanUI(QMainWindow):
                     safe_path = urllib.parse.quote(clean_path, safe='/:()–')
                     safe_target_url = urllib.parse.urlunparse(parsed._replace(path=safe_path))
 
-                    req = urllib.request.Request(safe_target_url, headers=headers)
+                    req = urllib.request.Request(safe_target_url, headers=NetSkrabb.get_dynamic_headers(safe_target_url))
                     with urllib.request.urlopen(req, timeout=10) as response:
                         html_text = response.read().decode('utf-8', errors='ignore')
 
@@ -1499,7 +1567,7 @@ class EpListCleanUI(QMainWindow):
             import urllib.parse
             p = urllib.parse.urlsplit(url)
             url = urllib.parse.urlunsplit((p.scheme, p.netloc, urllib.parse.quote(p.path), p.query, p.fragment))
-            req = urllib.request.Request(url, headers=headers)
+            req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
             with urllib.request.urlopen(req, timeout=10) as response:
                 html_text = response.read().decode('utf-8', errors='ignore')
 
@@ -1515,7 +1583,7 @@ class EpListCleanUI(QMainWindow):
                     visited_urls.add(extra_url)
                     try:
                         self.statusBar().showMessage(f"Fetching additional episodes from offset page...")
-                        req_extra = urllib.request.Request(extra_url, headers=headers)
+                        req_extra = urllib.request.Request(extra_url, headers=NetSkrabb.get_dynamic_headers(extra_url))
                         with urllib.request.urlopen(req_extra, timeout=10) as response_extra:
                             html_extra = response_extra.read().decode('utf-8', errors='ignore')
                         parser.feed(html_extra)
@@ -1526,7 +1594,7 @@ class EpListCleanUI(QMainWindow):
             try:
                 base_url = url.split('/episode')[0]
                 pics_url = f"{base_url.rstrip('/')}/pics"
-                req_pics = urllib.request.Request(pics_url, headers=headers)
+                req_pics = urllib.request.Request(pics_url, headers=NetSkrabb.get_dynamic_headers(pics_url))
                 if any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"]):
                     print(f"[DevDebug] Attempting to scrape pics from: {pics_url}")
                 with urllib.request.urlopen(req_pics, timeout=5) as resp_pics:
@@ -1563,7 +1631,7 @@ class EpListCleanUI(QMainWindow):
             self.scraped_images = list(final_id_map.values())
             self.scraped_title = parser.series_title
             if self.scraped_images:
-                self.selected_image_url = self.scraped_images[0]
+                self.selected_image_urls = [self.scraped_images[0]]
 
             # De-duplicate rows by episode number and format output text cleanly
             unique_episodes = {}
@@ -1591,6 +1659,12 @@ class EpListCleanUI(QMainWindow):
 
         selected_profile = self.profile_dropdown.currentText()
         
+        # Guard: Ensure cover is selected for Western profiles if download is enabled
+        if self.img_download_checkbox.isChecked() and not getattr(self, 'selected_image_urls', []):
+            if selected_profile in ["epguides.com", "Wikipedia.org"]:
+                self.statusBar().showMessage("No Cover Selected")
+                return
+
         # Trigger image download/conversion if the checkbox is active (All Profiles)
         saved_img = self.handle_image_download()
 
@@ -2088,11 +2162,12 @@ class EpListCleanUI(QMainWindow):
         QApplication.restoreOverrideCursor()
         
         if dialog.exec():
-            self.selected_image_url = dialog.selected_url
-            self.statusBar().showMessage(f"Selected image: {self.selected_image_url.split('/')[-1]}")
+            self.selected_image_urls = dialog.selected_urls
+            count = len(self.selected_image_urls)
+            self.statusBar().showMessage(f"Selected {count} image{'s' if count != 1 else ''} for download.")
 
     def handle_image_download(self):
-        if not self.img_download_checkbox.isChecked() or not self.selected_image_url:
+        if not self.img_download_checkbox.isChecked() or not getattr(self, 'selected_image_urls', []):
             return
 
         from PyQt6.QtWidgets import QFileDialog
@@ -2107,71 +2182,80 @@ class EpListCleanUI(QMainWindow):
             return
         self.update_config_key('last_save_path', save_dir)
 
+        saved_files = []
+        total = len(self.selected_image_urls)
+        self.progress_bar.setMaximum(total)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(total > 1) 
+
         try:
-            # Clean series title and original filename for safe path usage
-            clean_title = re.sub(r'[\\/*?:"<>|]', '', self.scraped_title).replace(' ', '_')
-            
-            # Use the URL already confirmed (and potentially upgraded to 'l') by the picker
-            target_url = self.selected_image_url
-            
-            # Auto-upgrade to Large version for MyAnimeList.net CDN assets if not manually selected
-            if "cdn.myanimelist.net" in target_url:
-                u_base, u_ext = os.path.splitext(target_url)
-                if not u_base.endswith('l'):
-                    target_url = f"{u_base}l{u_ext}"
-            
-            # Handle API-based filenames where the URL ends in '/view' instead of a file extension
-            if target_url.endswith('/view'):
-                # Extract the ID from the segment before '/view' (e.g., .../assets/12345/view)
-                p_id = target_url.split('/')[-2]
-                orig_name = p_id
-                orig_ext = ".jpg" # API returns images, typically JPEG
-            else:
-                orig_filename = target_url.split('/')[-1].split('?')[0]
-                orig_name, orig_ext = os.path.splitext(orig_filename)
-            
-            # Determine if conversion is needed based on user preferences
-            do_convert = self.app_config.get('convert_to_jpg', True)
-            is_already_jpg = orig_ext.lower() in ['.jpg', '.jpeg']
-            target_ext = ".jpg" if (do_convert and not is_already_jpg) else orig_ext
-            
-            # Construct the final filename: seriesname-imagename-folder.ext
-            final_filename = f"{clean_title}-{orig_name}-folder{target_ext}"
-            save_path = os.path.join(save_dir, final_filename)
+            for i, url in enumerate(self.selected_image_urls):
+                # Proactive Throttling: Pause after 10 items to avoid 429 Rate Limiting
+                if i >= 10:
+                    self.progress_bar.setFormat(f"Rate Limit Sleep... {i+1}/{total}")
+                    import time
+                    time.sleep(2.0)
+                
+                self.progress_bar.setFormat(f"Downloading Cover {i+1} of {total}...")
+                try:
+                    target_url = url
+                    # 1. High-res upgrade logic
+                    tpdb_id = self.tpdb_id_map.get(url)
+                    if tpdb_id:
+                        target_url = f"https://theposterdb.com/api/assets/{tpdb_id}/view"
+                    elif "cdn.myanimelist.net" in target_url:
+                        u_base, u_ext = os.path.splitext(target_url)
+                        if not u_base.endswith('l'): target_url = f"{u_base}l{u_ext}"
+                    
+                    # 2. Determine file metadata
+                    if target_url.endswith('/view'):
+                        p_id = target_url.split('/')[-2]
+                        orig_name, orig_ext = p_id, ".jpg"
+                        cache_fn = f"{p_id}_view.jpg"
+                    else:
+                        orig_filename = target_url.split('/')[-1].split('?')[0]
+                        orig_name, orig_ext = os.path.splitext(orig_filename)
+                        cache_fn = orig_filename
+                    
+                    cache_path = os.path.join(self.cache_dir, cache_fn)
+                    do_convert = self.app_config.get('convert_to_jpg', True)
+                    is_already_jpg = orig_ext.lower() in ['.jpg', '.jpeg']
+                    target_ext = ".jpg" if (do_convert and not is_already_jpg) else orig_ext
+                    
+                    clean_title = re.sub(r'[\\/*?:"<>|]', '', self.scraped_title).replace(' ', '_')
+                    final_filename = f"{clean_title}-{orig_name}-folder{target_ext}"
+                    save_path = os.path.join(save_dir, final_filename)
 
-            if target_url.endswith('/view'):
-                p_id = target_url.split('/')[-2]
-                cache_fn = f"{p_id}_view.jpg"
-            else:
-                cache_fn = target_url.split('/')[-1].split('?')[0]
-            cache_path = os.path.join(self.cache_dir, cache_fn)
-            
-            if os.path.exists(cache_path):
-                if any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"]):
-                    print(f"[DevDebug] Loading final image from cache: {cache_fn}")
-                with open(cache_path, 'rb') as f:
-                    image_data = f.read()
-            else:
-                if any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"]):
-                    print(f"[DevDebug] Cache miss. Downloading final image: {target_url}")
-                req = urllib.request.Request(target_url, headers=NetSkrabb.HEADERS)
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    image_data = resp.read()
-                with open(cache_path, 'wb') as f:
-                    f.write(image_data)
+                    # 3. Fetch/Cache handling
+                    if os.path.exists(cache_path):
+                        with open(cache_path, 'rb') as f: image_data = f.read()
+                    else:
+                        req = urllib.request.Request(target_url, headers=NetSkrabb.get_dynamic_headers(target_url))
+                        with urllib.request.urlopen(req, timeout=10) as resp: image_data = resp.read()
+                        with open(cache_path, 'wb') as f: f.write(image_data)
 
-            if do_convert and not is_already_jpg:
-                img = QImage()
-                img.loadFromData(image_data)
-                # Save as JPG with 90% quality as requested
-                img.save(save_path, "JPG", 90)
-            else:
-                with open(save_path, 'wb') as f:
-                    f.write(image_data)
+                    # 4. Save and Conversion
+                    if do_convert and not is_already_jpg:
+                        img = QImage()
+                        if img.loadFromData(image_data):
+                            img.save(save_path, "JPG", 90)
+                    else:
+                        with open(save_path, 'wb') as f: f.write(image_data)
+                    
+                    saved_files.append(final_filename)
+                except Exception as e:
+                    if any(arg in sys.argv for arg in ["-DevDebug", "-Dev", "-DBG"]):
+                        print(f"[DevDebug] Skip error on item {i+1}: {e}")
+                    continue
+                finally:
+                    self.progress_bar.setValue(i + 1)
+                    QApplication.processEvents()
 
-            return final_filename
-        except Exception as e:
-            self.statusBar().showMessage(f"Failed to save image: {str(e)}")
+            self.progress_bar.setVisible(False)
+            return ", ".join(saved_files) if len(saved_files) <= 2 else f"{len(saved_files)} images"
+        except Exception as global_e:
+            self.progress_bar.setVisible(False)
+            self.statusBar().showMessage(f"Batch failed: {str(global_e)}")
             return None
 
     def _roman_to_arabic(self, match):
