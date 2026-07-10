@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.10__12.36.15
+# VERSION: 2026.07.10__15.39.00
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -56,6 +56,7 @@ import sys
 import os
 import ctypes
 import json
+import urllib.request
 from PyQt6.QtWidgets import (QApplication, QComboBox, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                              QPlainTextEdit, QMenuBar, QStatusBar)
@@ -63,7 +64,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.10__12.36.15"
+APP_VERSION = "2026.07.10__15.39.00"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -569,6 +570,10 @@ class EpListCleanUI(QMainWindow):
         internal_dir = os.path.join(script_dir, "NetSkrabb_internal")
         icons_dir = os.path.join(internal_dir, "icons")
         os.makedirs(icons_dir, exist_ok=True)
+        self.url_icons_dir = os.path.join(internal_dir, "url_icons_downloaded")
+        os.makedirs(self.url_icons_dir, exist_ok=True)
+        # Check for and download any missing site-specific icons
+        self.sync_site_icons()
         self.cache_dir = os.path.join(internal_dir, "cache")
         os.makedirs(self.cache_dir, exist_ok=True)
 
@@ -666,6 +671,7 @@ class EpListCleanUI(QMainWindow):
             self.url_input.setCurrentText("")
 
     def init_ui(self):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         # 1. Menu Bar
         self.create_menu_bar()
         
@@ -678,22 +684,31 @@ class EpListCleanUI(QMainWindow):
 
         # 2. URL Input Row
         url_layout = QHBoxLayout()
-        url_label = QLabel("URL:")
+        # Mars Icon Slot (SVG)
+        self.url_icon = QLabel()
+        self.url_icon.setFixedSize(20, 20)
+        self.url_icon.setScaledContents(True)
+        icon_svg_path = os.path.join(script_dir, "NetSkrabb_internal", "icons", "url_icon", "mars-url-icon.svg")
+        if os.path.exists(icon_svg_path):
+            from PyQt6.QtGui import QPixmap
+            self.url_icon.setPixmap(QPixmap(icon_svg_path))
+        
         self.url_input = QComboBox()
         self.url_input.setEditable(True)
         self.url_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.url_input.lineEdit().setPlaceholderText("Paste webpage URL here...")
         from PyQt6.QtWidgets import QSizePolicy
         self.url_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.fetch_btn = QPushButton("Fetch Text")
         
-        url_layout.addWidget(url_label)
+        
+
+        url_layout.addWidget(self.url_icon)
+        url_layout.addSpacing(8)
         url_layout.addWidget(self.url_input)
-        url_layout.addWidget(self.fetch_btn)
         main_layout.addLayout(url_layout)
 
         # Connect enter key press in URL field to fetch functionality
-        self.url_input.lineEdit().returnPressed.connect(self.placeholder_fetch)
+        self.url_input.lineEdit().returnPressed.connect(self.trigger_data_load)
         # Enable auto-switching of profiles based on pasted/typed URLs
         self.url_input.editTextChanged.connect(self.auto_detect_profile)
 
@@ -864,7 +879,7 @@ class EpListCleanUI(QMainWindow):
         # Redundant returnPressed connection removed to prevent double-fetching execution loops
 
         # Connect button placeholders to verify layout interaction later
-        self.fetch_btn.clicked.connect(self.placeholder_fetch)
+        
         self.clean_btn.clicked.connect(self.placeholder_clean)
         self.copy_btn.clicked.connect(self.placeholder_copy)
 
@@ -931,7 +946,7 @@ class EpListCleanUI(QMainWindow):
         help_menu.addAction(manual_action)
         help_menu.addAction(about_action)
 
-    def placeholder_fetch(self):
+    def trigger_data_load(self):
         import urllib.request
         import re
         
@@ -957,7 +972,7 @@ class EpListCleanUI(QMainWindow):
             if "/set/" not in url.lower():
                 self.statusBar().showMessage("ThePosterDB URLs must be a 'Set' link (contain /set/).")
                 return
-            self.statusBar().showMessage("Fetching posters from ThePosterDB...")
+            self.statusBar().showMessage("Loading posters from ThePosterDB...")
             QApplication.processEvents()
             try:
                 import urllib.request
@@ -1224,7 +1239,7 @@ class EpListCleanUI(QMainWindow):
                     return
 
         # Global UI update to show progress immediately for all profiles
-        self.statusBar().showMessage(f"Fetching data from {selected_profile}...")
+        self.statusBar().showMessage(f"Loading data from {selected_profile}...")
         QApplication.processEvents()
 
         
@@ -1299,7 +1314,7 @@ class EpListCleanUI(QMainWindow):
             else:
                 self._wikipedia_sub_urls = [url]
         if selected_profile == "epguides.com":
-            self.statusBar().showMessage("Fetching data from epguides.com...")
+            self.statusBar().showMessage("Loading data from epguides.com...")
             try:
                 # Reference class-level headers
                 req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
@@ -1368,7 +1383,7 @@ class EpListCleanUI(QMainWindow):
                 return
 
         if selected_profile == "Wikipedia.org":
-            self.statusBar().showMessage("Fetching data from Wikipedia.org...")
+            self.statusBar().showMessage("Loading data from Wikipedia.org...")
             try:
                 import urllib.request
                 from bs4 import BeautifulSoup
@@ -1486,13 +1501,13 @@ class EpListCleanUI(QMainWindow):
                     self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} titles from Wikipedia.org.")
                 else:
                     self.input_text.setPlainText("No valid episode titles could be identified from the Wikipedia.org tables.")
-                    self.statusBar().showMessage("Fetch complete, but no matching table columns found.")
+                    self.statusBar().showMessage("Load complete, but no matching table columns found.")
                 return
             except Exception as e:
                 self.statusBar().showMessage(f"Error fetching from Wikipedia.org: {str(e)}")
                 return
 
-        self.statusBar().showMessage("Fetching data from MyAnimeList.net...")
+        self.statusBar().showMessage("Loading data from MyAnimeList.net...")
         
         try:
             from html.parser import HTMLParser
@@ -1582,7 +1597,7 @@ class EpListCleanUI(QMainWindow):
                 if extra_url not in visited_urls:
                     visited_urls.add(extra_url)
                     try:
-                        self.statusBar().showMessage(f"Fetching additional episodes from offset page...")
+                        self.statusBar().showMessage(f"Loading additional episodes from offset page...")
                         req_extra = urllib.request.Request(extra_url, headers=NetSkrabb.get_dynamic_headers(extra_url))
                         with urllib.request.urlopen(req_extra, timeout=10) as response_extra:
                             html_extra = response_extra.read().decode('utf-8', errors='ignore')
@@ -1645,7 +1660,7 @@ class EpListCleanUI(QMainWindow):
                 self.statusBar().showMessage(f"Successfully scraped {len(episodes_found)} episodes from MyAnimeList.net.")
             else:
                 self.input_text.setPlainText("No episodes could be found using the structural HTML parser.")
-                self.statusBar().showMessage("Fetch complete, but no matching table rows found.")
+                self.statusBar().showMessage("Load complete, but no matching table rows found.")
                 
         except Exception as e:
             self.statusBar().showMessage(f"Network error during fetch: {str(e)}")
@@ -1865,7 +1880,7 @@ class EpListCleanUI(QMainWindow):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("About NetSkrabb")
-        dialog.resize(500, 420)
+        dialog.resize(500, 500)
         layout = QVBoxLayout(dialog)
 
         browser = QTextBrowser()
@@ -1893,9 +1908,15 @@ class EpListCleanUI(QMainWindow):
             f"it under the terms of the GNU General Public License as published by "
             f"the Free Software Foundation, either version 3 of the License, or "
             f"(at your option) any later version.<br><br>"
+            f"This program is distributed in the hope that it will be useful, "
+            f"but WITHOUT ANY WARRANTY; without even the implied warranty of "
+            f"MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the "
+            f"GNU General Public License for more details.<br><br>"
             f"<b>Icon Credits:</b><br>"
-            f"'Crab' by JoyPixels via <a href='https://www.svgrepo.com/svg/401352/crab'>SVGRepo</a>.<br>"
+            f"'Crab' (NetSkrabb-icon.png, NetSkrabb-icon.svg ) by JoyPixels via <a href='https://www.svgrepo.com/svg/401352/crab'>SVGRepo</a>.<br>"
             f"Used under MIT License. Modified by pwshAgyjkcrg761 (Color/Format).<br><br>"
+            f"'Mars' (mars-url-icon.svg) by Good Stuff No Nonsense via <a href='https://www.svgrepo.com/svg/440497/mars'>SVGRepo</a>.<br>"
+            f"Used under Creative Commons Attribution. Modified by pwshAgyjkcrg761 (Metadata/Format).<br><br>"
             f"You should have received a copy of the GNU General Public License "
             f"along with this program. If not, see "
             f"<a href='https://www.gnu.org/licenses/gpl-3.0.html'>https://www.gnu.org/licenses/gpl-3.0.html</a>."
@@ -1906,15 +1927,15 @@ class EpListCleanUI(QMainWindow):
 
         # Standard button box with a custom Action button for the license file
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        license_btn = buttons.addButton("View Icon License", QDialogButtonBox.ButtonRole.ActionRole)
+        license_btn = buttons.addButton("View Icon Licenses", QDialogButtonBox.ButtonRole.ActionRole)
         
         def view_license():
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            lic_path = os.path.join(script_dir, "NetSkrabb_internal", "icons", "LICENSE.txt")
-            if os.path.exists(lic_path):
-                os.startfile(lic_path)
+            icons_dir = os.path.join(script_dir, "NetSkrabb_internal", "icons")
+            if os.path.exists(icons_dir):
+                os.startfile(icons_dir)
             else:
-                self.statusBar().showMessage(f"Error: {lic_path} not found.")
+                self.statusBar().showMessage(f"Error: {icons_dir} not found.")
 
         license_btn.clicked.connect(view_license)
         buttons.accepted.connect(dialog.accept)
@@ -1982,7 +2003,7 @@ class EpListCleanUI(QMainWindow):
 
             f"<h2>OVERVIEW</h2>"
             f"<p>NetSkrabb is a high-performance metadata scraper and filename formatter designed to "
-            f"standardize media libraries. It intelligently fetches episode titles from major web "
+            f"standardize media libraries. It intelligently loads episode titles from major web "
             f"sources and processes them into Windows-legal file system names.</p>"
 
             f"<h2>DEPENDENCIES</h2>"
@@ -1995,7 +2016,7 @@ class EpListCleanUI(QMainWindow):
             f"<h2>USAGE WORKFLOW</h2>"
             f"<div class='step-card'><b>1. URL / Search:</b> Enter a direct URL or type a series name in the URL box.</div>"
             f"<div class='step-card'><b>2. Profile:</b> Ensure the 'Site Profile' matches your target source.</div>"
-            f"<div class='step-card'><b>3. Fetch:</b> Click 'Fetch Text' to pull raw metadata into the input area.</div>"
+            f"<div class='step-card'><b>3. Load:</b> Press Enter in the URL box to load raw metadata into the input area.</div>"
             f"<div class='step-card'><b>4. Clean:</b> Click 'CLEAN & FORMAT' to finalize the filename list.</div>"
 
             f"<h2>CORE FEATURES</h2>"
@@ -2152,7 +2173,7 @@ class EpListCleanUI(QMainWindow):
 
     def open_image_picker_dialog(self):
         if not self.scraped_images:
-            self.statusBar().showMessage("No images available. Please fetch a MyAnimeList.net URL first.")
+            self.statusBar().showMessage("No images available. Please load a MyAnimeList.net URL first.")
             return
             
         self.statusBar().showMessage("Loading image gallery...")
@@ -2358,15 +2379,71 @@ class EpListCleanUI(QMainWindow):
     def auto_detect_profile(self, text):
         # Scan for domain fingerprints and update the profile dropdown automatically
         lower_text = text.lower()
-        # Only auto-switch if the input looks like a URL to avoid interrupting search queries
-        if not (lower_text.startswith("http") or "www." in lower_text):
+        # Resolve icon paths across split directories
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        mars_dir = os.path.join(base_dir, "NetSkrabb_internal", "icons", "url_icon")
+        
+        def set_url_pixmap(filename):
+            from PyQt6.QtGui import QPixmap
+            # Determine directory: Mars stays in icons, others in url_icons_downloaded
+            target_dir = mars_dir if filename == "mars-url-icon.svg" else self.url_icons_dir
+            p_path = os.path.join(target_dir, filename)
+            
+            if os.path.exists(p_path):
+                self.url_icon.setPixmap(QPixmap(p_path))
+            else:
+                # Fallback to Mars if specific icon is missing or not yet downloaded
+                fallback = os.path.join(mars_dir, "mars-url-icon.svg")
+                if os.path.exists(fallback):
+                    self.url_icon.setPixmap(QPixmap(fallback))
+
+        # Default/Idle/Search state (Use Mars)
+        # Permissive URL detection (checks for common protocol or domain dots)
+        is_url = lower_text.startswith(("http", "www.")) or ("." in lower_text and "/" in lower_text)
+        
+        if not is_url or not lower_text.strip():
+            set_url_pixmap("mars-url-icon.svg")
             return
+
+        # Logic for Icons and Profile Auto-switching
         if "myanimelist.net" in lower_text:
+            set_url_pixmap("mal.svg")
             self.profile_dropdown.setCurrentText("MyAnimeList.net")
-        elif "epguides.com" in lower_text:
-            self.profile_dropdown.setCurrentText("epguides.com")
         elif "wikipedia.org" in lower_text:
+            set_url_pixmap("wiki.ico")
             self.profile_dropdown.setCurrentText("Wikipedia.org")
+        elif "theposterdb.com" in lower_text:
+            set_url_pixmap("tpdb.png")
+            # Note: ThePosterDB has no dedicated text profile, stays on current
+        elif "epguides.com" in lower_text:
+            set_url_pixmap("epguides.ico")
+            self.profile_dropdown.setCurrentText("epguides.com")
+        else:
+            set_url_pixmap("mars-url-icon.svg")
+            
+    def sync_site_icons(self):
+        """Ensures site-specific favicons exist locally; downloads if missing."""
+        icons = {
+            "mal.svg": "https://cdn.myanimelist.net/images/favicon.svg",
+            "wiki.ico": "https://www.wikipedia.org/static/favicon/wikipedia.ico",
+            "tpdb.png": "https://theposterdb.com/images/logos/tpdb_icon.png",
+            "epguides.ico": "https://epguides.com/favicon.ico"
+        }
+        for filename, url in icons.items():
+            path = os.path.join(self.url_icons_dir, filename)
+            # Remove empty or corrupt files from previous failed attempts
+            if os.path.exists(path) and os.path.getsize(path) == 0:
+                os.remove(path)
+
+            if not os.path.exists(path):
+                try:
+                    # Use generic headers for the initial icon sync
+                    req = urllib.request.Request(url, headers=NetSkrabb.get_dynamic_headers(url))
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        with open(path, 'wb') as f:
+                            f.write(resp.read())
+                except Exception:
+                    pass
     
     def add_to_history(self, text):
         if not text:
