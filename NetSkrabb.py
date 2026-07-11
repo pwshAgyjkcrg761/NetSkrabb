@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.10__15.39.00
+# VERSION: 2026.07.11__05.57.00
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -64,7 +64,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.10__15.39.00"
+APP_VERSION = "2026.07.11__05.57.00"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -2021,10 +2021,10 @@ class EpListCleanUI(QMainWindow):
 
             f"<h2>CORE FEATURES</h2>"
             f"<p><b>Site Profile:</b> Determines parsing logic. <b>MyAnimeList</b> handles Japanese animation, "
-            f"while <b>epguides</b> and <b>Wikipedia</b> target Western television series.</p>"
+            f"while <b>epguides</b> and <b>Wikipedia</b> target Western television series. <b>ThePosterDB</b> is supported for direct poster gallery scraping.</p>"
             
             f"<p><b>Filters:</b> Access via <code>Tools > Filters</code>. This menu controls pipeline stages "
-            f"like Roman numeral translation, marker stripping, and Windows-illegal character sanitation.</p>"
+            f"including Roman numeral translation, marker stripping, forward-slash conversion, and Windows-illegal character sanitation.</p>"
             
             f"<p><b>Absolute Numbering:</b> (Anime Only) Overrides source numbering with a continuous "
             f"sequence starting from your defined integer.</p>"
@@ -2034,8 +2034,8 @@ class EpListCleanUI(QMainWindow):
 
             f"<h2>NOTES</h2>"
             f"<ul>"
-            f"<li><b>Cover Images:</b> (Anime Only) Enable 'Download Cover Image' to save high-resolution "
-            f"posters as <code>folder.jpg</code>.</li>"
+            f"<li><b>Cover Images:</b> Enable 'Download Cover Image' to save high-resolution "
+            f"posters using standardized filenames for media servers.</li>"
             f"<li><b>Manual Overrides:</b> The top text box is fully editable. You can correct "
             f"source metadata manually before triggering the clean pass.</li>"
             f"</ul>"
