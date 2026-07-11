@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.11__05.57.00
+# VERSION: 2026.07.11__06.32.12
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -64,7 +64,7 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.11__05.57.00"
+APP_VERSION = "2026.07.11__06.32.12"
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -2008,6 +2008,7 @@ class EpListCleanUI(QMainWindow):
 
             f"<h2>DEPENDENCIES</h2>"
             f"<ul>"
+            f"<li><b>OS:</b> Microsoft Windows 10 / 11.</li>"
             f"<li><b>Python:</b> Built with Python 3.14.5.</li>"
             f"<li><b>PyQt6:</b> Orchestrates the graphical user interface.</li>"
             f"<li><b>Beautiful Soup 4:</b> Powers the HTML parsing engine for Western profiles.</li>"
