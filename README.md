@@ -55,6 +55,7 @@ This software is released under the **GNU General Public License v3**.
 ---
 
 ## Dependencies
+* **OS:** Microsoft Windows 10 / 11.
 * **Python:** 3.14.5+ (Recommended).
 * **PyQt6:** Required for the Graphical User Interface.
 * **Beautiful Soup 4:** Required for HTML table parsing on Wikipedia and epguides profiles.
@@ -68,4 +69,4 @@ This software is released under the **GNU General Public License v3**.
 ---
 > **Document Control**<br>
 > *This document is up-to-date with the following version of NetSkrabb™.*<br>
-> *2026.07.11__05.57.00*
+> *2026.07.11__06.32.12*
