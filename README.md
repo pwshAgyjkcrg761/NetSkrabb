@@ -42,14 +42,14 @@ This software is released under the **GNU General Public License v3**.
     * **Asset:** Crab SVG Vector
     * **Author:** JoyPixels
     * **Source:** <a href="https://www.svgrepo.com/svg/401352/crab" target="_blank">https://www.svgrepo.com/svg/401352/crab</a>
-    * **License:** <a href="https://codeberg.org/pwshAgyjkcrg761/NetSkrabb/src/branch/main/NetSkrabb_internal/icons/LICENSE.txt" target="_blank">MIT License</a>
+    * **License:** <a href="https://codeberg.org/pwshAgyjkcrg761/NetSkrabb/src/branch/main/NetSkrabb_internal/icons/LICENSE" target="_blank">MIT License</a>
     * **Modifications:** Converted to PNG and color-adjusted for NetSkrabb branding.
       
 *  **File:** `mars-url-icon.svg`
     * **Asset:** Mars SVG Vector
     * **Author:** Good Stuff No Nonsense
     * **Source:** <a href="https://www.svgrepo.com/svg/440497/mars" target="_blank">https://www.svgrepo.com/svg/440497/mars</a>
-    * **License:** <a href="https://codeberg.org/pwshAgyjkcrg761/NetSkrabb/src/branch/main/NetSkrabb_internal/icons/url_icons/LICENSE.txt" target="_blank">CC Attribution License</a>
+    * **License:** <a href="https://codeberg.org/pwshAgyjkcrg761/NetSkrabb/src/branch/main/NetSkrabb_internal/icons/url_icons/LICENSE" target="_blank">CC Attribution License</a>
     * **Modifications:** Optimized metadata and formatting for application integration.
 
 ---
