@@ -3,6 +3,8 @@
 
 ---
 
+![NetSkrabb Dark Mode Main Interface](images/NetSkrabb-py_main.png)
+
 ## Overview
 NetSkrabb™ is a specialized utility designed to bridge the gap between web-based episode databases and local file system organization. It surgically scrapes metadata from major sources—specifically **MyAnimeList.net**, **epguides.com**, **Wikipedia.org**, and **ThePosterDB.com**—to generate clean, Windows-compliant filenames.
 
