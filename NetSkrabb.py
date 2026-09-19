@@ -1,6 +1,6 @@
 # ==============================================================================
 # SCRIPT: NetSkrabb.py
-# VERSION: 2026.07.11__06.32.12
+# VERSION: 2026.09.19__18.03.12
 # TARGET: Python 3.14.5
 #
 # Copyright (C) 2026 pwshAgyjkcrg761
@@ -64,7 +64,18 @@ from PyQt6.QtGui import QAction, QFont, QIcon
 from PyQt6.QtWidgets import QComboBox, QDialog, QCheckBox, QDialogButtonBox, QFrame
 
 # Easily maintainable application metadata configuration
-APP_VERSION = "2026.07.11__06.32.12"
+APP_VERSION = "2026.09.19__18.03.12"
+
+def get_bundled_path(relative_path):
+    """Get absolute path to bundled resources (works for dev and PyInstaller sys._MEIPASS)."""
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+def get_app_dir():
+    """Get persistent directory where the script or exe lives for config/cache storage."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 class NetSkrabb(QMainWindow):
     # Consolidated headers for consistent browser fingerprinting
@@ -565,11 +576,10 @@ class EpListCleanUI(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"NetSkrabb v{APP_VERSION}")
         
-        # Define and create internal directory structure
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        internal_dir = os.path.join(script_dir, "NetSkrabb_internal")
-        icons_dir = os.path.join(internal_dir, "icons")
-        os.makedirs(icons_dir, exist_ok=True)
+        # Define persistent internal directory structure alongside executable
+        app_dir = get_app_dir()
+        internal_dir = os.path.join(app_dir, "NetSkrabb_internal")
+        os.makedirs(internal_dir, exist_ok=True)
         self.url_icons_dir = os.path.join(internal_dir, "url_icons_downloaded")
         os.makedirs(self.url_icons_dir, exist_ok=True)
         # Check for and download any missing site-specific icons
@@ -577,17 +587,26 @@ class EpListCleanUI(QMainWindow):
         self.cache_dir = os.path.join(internal_dir, "cache")
         os.makedirs(self.cache_dir, exist_ok=True)
 
-        # Set Window Icon and fix Windows Taskbar grouping
-        icon_path = os.path.join(icons_dir, "NetSkrabb-icon.png")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
-            if sys.platform == 'win32':
-                try:
-                    myappid = 'pwshAgyjkcrg761.netskrabb.main.v1'
-                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-                except Exception:
-                    pass
-        
+        # Set Window Icon (checking SVG, ICO, and PNG in bundled and local locations)
+        icon_candidates = [
+            get_bundled_path(os.path.join("NetSkrabb_internal", "icons", "NetSkrabb-icon.svg")),
+            get_bundled_path(os.path.join("NetSkrabb_internal", "icons", "NetSkrabb-icon.ico")),
+            get_bundled_path(os.path.join("NetSkrabb_internal", "icons", "NetSkrabb-icon.png")),
+            os.path.join(internal_dir, "icons", "NetSkrabb-icon.svg"),
+            os.path.join(internal_dir, "icons", "NetSkrabb-icon.ico"),
+            os.path.join(internal_dir, "icons", "NetSkrabb-icon.png")
+        ]
+        for icon_path in icon_candidates:
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+                break
+
+        if sys.platform == 'win32':
+            try:
+                myappid = 'pwshAgyjkcrg761.netskrabb.main.v1'
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            except Exception:
+                pass
 
         self.config_path = os.path.join(internal_dir, "NetSkrabb.config.json")
         
@@ -671,7 +690,6 @@ class EpListCleanUI(QMainWindow):
             self.url_input.setCurrentText("")
 
     def init_ui(self):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         # 1. Menu Bar
         self.create_menu_bar()
         
@@ -688,7 +706,9 @@ class EpListCleanUI(QMainWindow):
         self.url_icon = QLabel()
         self.url_icon.setFixedSize(20, 20)
         self.url_icon.setScaledContents(True)
-        icon_svg_path = os.path.join(script_dir, "NetSkrabb_internal", "icons", "url_icon", "mars-url-icon.svg")
+        icon_svg_path = get_bundled_path(os.path.join("NetSkrabb_internal", "icons", "url_icon", "mars-url-icon.svg"))
+        if not os.path.exists(icon_svg_path):
+            icon_svg_path = os.path.join(get_app_dir(), "NetSkrabb_internal", "icons", "url_icon", "mars-url-icon.svg")
         if os.path.exists(icon_svg_path):
             from PyQt6.QtGui import QPixmap
             self.url_icon.setPixmap(QPixmap(icon_svg_path))
@@ -1930,8 +1950,9 @@ class EpListCleanUI(QMainWindow):
         license_btn = buttons.addButton("View Icon Licenses", QDialogButtonBox.ButtonRole.ActionRole)
         
         def view_license():
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            icons_dir = os.path.join(script_dir, "NetSkrabb_internal", "icons")
+            icons_dir = get_bundled_path(os.path.join("NetSkrabb_internal", "icons"))
+            if not os.path.exists(icons_dir):
+                icons_dir = os.path.join(get_app_dir(), "NetSkrabb_internal", "icons")
             if os.path.exists(icons_dir):
                 os.startfile(icons_dir)
             else:
@@ -2380,21 +2401,24 @@ class EpListCleanUI(QMainWindow):
     def auto_detect_profile(self, text):
         # Scan for domain fingerprints and update the profile dropdown automatically
         lower_text = text.lower()
-        # Resolve icon paths across split directories
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        mars_dir = os.path.join(base_dir, "NetSkrabb_internal", "icons", "url_icon")
         
         def set_url_pixmap(filename):
             from PyQt6.QtGui import QPixmap
-            # Determine directory: Mars stays in icons, others in url_icons_downloaded
-            target_dir = mars_dir if filename == "mars-url-icon.svg" else self.url_icons_dir
-            p_path = os.path.join(target_dir, filename)
+            # Determine directory: Mars stays in bundled icons, others in persistent url_icons_downloaded
+            if filename == "mars-url-icon.svg":
+                p_path = get_bundled_path(os.path.join("NetSkrabb_internal", "icons", "url_icon", filename))
+                if not os.path.exists(p_path):
+                    p_path = os.path.join(get_app_dir(), "NetSkrabb_internal", "icons", "url_icon", filename)
+            else:
+                p_path = os.path.join(self.url_icons_dir, filename)
             
             if os.path.exists(p_path):
                 self.url_icon.setPixmap(QPixmap(p_path))
             else:
                 # Fallback to Mars if specific icon is missing or not yet downloaded
-                fallback = os.path.join(mars_dir, "mars-url-icon.svg")
+                fallback = get_bundled_path(os.path.join("NetSkrabb_internal", "icons", "url_icon", "mars-url-icon.svg"))
+                if not os.path.exists(fallback):
+                    fallback = os.path.join(get_app_dir(), "NetSkrabb_internal", "icons", "url_icon", "mars-url-icon.svg")
                 if os.path.exists(fallback):
                     self.url_icon.setPixmap(QPixmap(fallback))
 
