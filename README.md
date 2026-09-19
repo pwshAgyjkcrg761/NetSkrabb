@@ -71,4 +71,4 @@ This software is released under the **GNU General Public License v3**.
 ---
 > **Document Control**<br>
 > *This document is up-to-date with the following version of NetSkrabb™.*<br>
-> *2026.07.11__06.32.12*
+> *2026.09.19__18.03.12*
